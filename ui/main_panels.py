@@ -13,18 +13,8 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         scn = context.scene.tot_props
-        
-        # ==========================================================
-        # 1. 全局控制区 (Global Control)
-        # ==========================================================
-        box = layout.box()
-        box.prop(scn, "lod_camera", icon='CAMERA_DATA')
-        
-        row = box.row()
-        row.scale_y = 1.5
-        # 一键优化所有 (串联调用三个 Operator)
-        op = row.operator("tot.run_all_optimization", text="Optimize Scene via Camera", icon='RENDER_ANIMATION')
-        
+        #相机选择
+        layout.prop(scn, "lod_camera", icon='CAMERA_DATA')
         layout.separator()
         
         # 距离阈值设定 (Zones)
