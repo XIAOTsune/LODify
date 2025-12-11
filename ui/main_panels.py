@@ -74,7 +74,7 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
         # ==========================================================
         box = layout.box()
         
-        # 头部：标题 + 开关 (v2 样式)
+        # 头部
         row = box.row()
         row.label(text="Geometry LOD", icon="MOD_DECIM")
         row.prop(scn, "geo_lod_enabled", text="Enable", toggle=True)
@@ -84,30 +84,34 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
             row = box.row(align=True)
             row.prop(scn, "geo_lod_method", text="Method")
             
-            # 2. 根据方法显示不同参数
+            # 2. 参数显示
+            col = box.column(align=True)
+            col.prop(scn, "geo_lod_min_faces", text="Min Faces (Safety)")
+            
+            # 动态显示强度标签
             if scn.geo_lod_method == 'DECIMATE':
-                col = box.column(align=True)
-                col.prop(scn, "geo_lod_min_faces", text="Min Faces")
-                col.prop(scn, "geo_lod_min_ratio", text="Min Ratio (LOD3)")
+                # Decimate 模式：数值是“保留比例”，越小减面越多
+                col.prop(scn, "geo_lod_min_ratio", text="Min Ratio (Max Reduction)", slider=True)
             else:
-                # GN 模式下的提示
-                col = box.column(align=True)
-                col.label(text="Hint:", icon='INFO')
-                col.label(text="• Add 'Geometry Nodes' modifier")
-                col.label(text="• Node Group needs 'LOD_Factor' input")
+                # GN 模式：数值是“强度因子”，越大减面越多
+                # 复用同一个变量，但在逻辑里处理
+                col.prop(scn, "geo_lod_min_ratio", text="GN Strength Factor", slider=True)
+                col.label(text="Higher Strength = More Merging", icon='INFO')
 
-            # 3. 三大核心按钮 (横排)
+            # 3. 三大核心按钮 (Setup / Update / Reset)
             row = box.row(align=True)
             row.scale_y = 1.2
             row.operator("tot.geo_lod_setup", text="Setup Modifiers", icon="MODIFIER")
             row.operator("tot.geo_lod_update", text="Update Geometry", icon="PLAY")
             row.operator("tot.geo_lod_reset", text="Reset Geometry", icon="FILE_REFRESH")
             
-            # 4. Apply 按钮 (仅 Decimate 模式显示，且单独一行)
-            if scn.geo_lod_method == 'DECIMATE':
-                row = box.row()
-                row.operator("tot.geo_lod_apply", text="Apply (Destructive)", icon="CHECKMARK")
-
+            # 4. Apply 按钮 (现在支持两种模式)
+            row = box.row()
+            row.scale_y = 1.2
+            # 红色警告色提示这是破坏性操作
+            row.alert = True 
+            op_text = "Apply Decimate" if scn.geo_lod_method == 'DECIMATE' else "Apply GeoNodes"
+            row.operator("tot.geo_lod_apply", text=f"{op_text} (Destructive)", icon="CHECKMARK")
         # ==========================================================
         # 4. 维度一：贴图管理 (Texture - 占位)
         # ==========================================================
