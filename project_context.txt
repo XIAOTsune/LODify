@@ -77,6 +77,27 @@ class TOT_Props(bpy.types.PropertyGroup):
     default_col_colors: StringProperty() 
     last_shading: StringProperty()
 
+    # 贴图管理
+    image_list: CollectionProperty(type=TOT_ImageItem)
+    custom_index_image_list: IntProperty()
+    
+    # 缩放相关
+    resize_size: EnumProperty(
+        name="Target Size",
+        items=[
+            ('128', '128 px', ''), ('256', '256 px', ''), ('512', '512 px', ''),
+            ('1024', '1024 px', ''), ('2048', '2048 px', ''), ('c', 'Custom', '')
+        ],
+        default='1024'
+    )
+    custom_resize_size: IntProperty(default=1024, min=4, name="Custom Px")
+    use_same_directory: BoolProperty(default=True, name="Save in Blend Dir")
+    custom_output_path: StringProperty(subtype='DIR_PATH', name="Custom Path")
+    duplicate_images: BoolProperty(default=True, name="Duplicate Files") # 是否另存为副本
+
+    # 统计信息
+    r_total_images: IntProperty(name="Total Images")
+    total_image_memory: StringProperty(name="Total Memory")
     # ==========================================================
     # 2. LOD 管理器核心设置 (LOD Manager Core)
     # ==========================================================
@@ -117,7 +138,6 @@ class TOT_Props(bpy.types.PropertyGroup):
     view_lod1_display: EnumProperty(name="L1 Display", items=display_items, default='SOLID')
     view_lod2_display: EnumProperty(name="L2 Display", items=display_items, default='WIRE')
     view_lod3_display: EnumProperty(name="L3 Display", items=display_items, default='BOUNDS')
-    
     view_lod3_hide: BoolProperty(name="Hide at L3", description="在极远距离直接隐藏物体", default=False)
 
     # ==========================================================
@@ -153,33 +173,6 @@ class TOT_Props(bpy.types.PropertyGroup):
         max=1.0, 
         description="最远距离时的压缩比例 (Decimate Ratio) 或 强度因子"
     )
-    # ==========================================================
-    # 5. 维度一：贴图管理 (Texture Management)
-    # ==========================================================
-    image_list: CollectionProperty(type=TOT_ImageItem)
-    custom_index_image_list: IntProperty()
-    
-    image_data_method: EnumProperty(
-        name="Source",
-        items=[('s1', 'Blend Data', ''), ('s2', 'Original Files', '')],
-        default='s1'
-    )
-    resize_size: EnumProperty(
-        name="Target Size",
-        items=[
-            ('128', '128 px', ''), ('256', '256 px', ''), ('512', '512 px', ''),
-            ('1024', '1024 px', ''), ('2048', '2048 px', ''), ('c', 'Custom', '')
-        ],
-        default='1024'
-    )
-    custom_resize_size: IntProperty(default=1024, min=4)
-    use_same_directory: BoolProperty(default=True, name="Same Directory")
-    custom_output_path: StringProperty(subtype='DIR_PATH')
-    duplicate_images: BoolProperty(default=True, name="Duplicate Files")
-
-    # 统计信息
-    r_total_images: IntProperty()
-    total_image_memory: StringProperty()
 
 # 注册列表
 classes = (
@@ -252,8 +245,8 @@ from . import operators
 bl_info = {
     "name": "ToOptimize Tools (LOD Edition)",
     "author": "Your Name",
-    "version": (1, 3, 0),
-    "blender": (3, 6, 0), # 设置为你支持的最低版本
+    "version": (2, 0, 0),
+    "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
     "description": "全场景性能优化：贴图、减面与视窗管理",
     "warning": "",
@@ -303,7 +296,7 @@ import bpy
 from .. import utils
 
 class TOT_OT_CollectionAnalyzer(bpy.types.Operator):
-    """Run Collection Analyzer"""
+    """根据顶点数标记集合颜色并显示百分比"""
     bl_idname = "tot.collectionanalyzer"
     bl_label = "Run Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -311,53 +304,72 @@ class TOT_OT_CollectionAnalyzer(bpy.types.Operator):
     def execute(self, context):
         scn = context.scene.tot_props
         
-        # 1. 清理旧状态
+        # 1. 强制清理旧状态
         bpy.ops.tot.cleancolors()
 
         self.report({'INFO'}, "Analyzing Collections...")
         
-        # 备份当前颜色状态，以便 Clear 时恢复
-        backup = {}
-        
-        # 获取基础阈值 (假设基准是 100万面，你可以调整这个基数)
-        BASE_COUNT = 1000000 
-        
-        # 遍历所有集合
-        for col in bpy.data.collections:
-            # 记录原始颜色
-            backup[col.name] = col.color_tag
-            
-            # 计算该集合的顶点数
-            v_count = utils.get_collection_vertex_count(col)
-            
-            # 逻辑判定：根据顶点数赋予颜色
-            # COLOR_01: Red (Very High)
-            # COLOR_02: Orange (High)
-            # COLOR_03: Yellow (Medium)
-            # COLOR_04: Green (Low)
-            # COLOR_05: Blue (Very Low/Safe)
-            
-            if v_count > (BASE_COUNT * scn.mult_veryhigh): # 0.9
-                col.color_tag = 'COLOR_01'
-            elif v_count > (BASE_COUNT * scn.mult_high):   # 0.8
-                col.color_tag = 'COLOR_02'
-            elif v_count > (BASE_COUNT * scn.mult_medium): # 0.6
-                col.color_tag = 'COLOR_03'
-            elif v_count > (BASE_COUNT * scn.mult_low):    # 0.2
-                col.color_tag = 'COLOR_04'
-            else:
-                col.color_tag = 'NONE' # 或者 'COLOR_05'
+        # 2. 获取参数
+        if scn.colA_Method == 'm1':
+            m_vhigh, m_high, m_med, m_low = 0.9, 0.8, 0.6, 0.2
+        else:
+            m_vhigh = scn.mult_veryhigh
+            m_high = scn.mult_high
+            m_med = scn.mult_medium
+            m_low = scn.mult_low
 
-        # 保存备份数据到字符串属性中
+        backup = {}
+        scene_total_verts = 0
+        max_col_verts = 0
+
+        # 3. 统计全场景
+        for obj in context.view_layer.objects:
+            if obj.type == 'MESH':
+                 scene_total_verts += len(obj.data.vertices) # 简单统计，为了速度
+        
+        if scene_total_verts == 0: scene_total_verts = 1 # 防止除以0
+
+        # 4. 遍历集合
+        for col in bpy.data.collections:
+            # 备份原始颜色
+            backup[col.name] = col.color_tag
+            col.color_tag = 'NONE' # 重置
+
+            # 计算该集合顶点数
+            v_count = utils.get_collection_vertex_count(col)
+            if v_count > max_col_verts: max_col_verts = v_count
+
+            # 只有当集合有东西时才处理
+            if v_count > 0:
+                # 4.1 重命名：增加百分比后缀
+                percent = (v_count / scene_total_verts) * 100.0
+                col.name = f"{col.name} | {percent:.1f}%"
+
+                # 4.2 颜色判定 (相对于场景中最大的集合，或者固定阈值? 旧逻辑是用 max_col_verts 作为基准)
+                # 但旧逻辑是在循环里动态更新 highest_col，这里为了准确，应该用 scene_total_verts 或预设大数值
+                # 这里采用：基于当前集合占总场景的比例，或者基于绝对数量。
+                # 移植 v2 逻辑：它是动态对比 highest_col (但在循环里 highest 还没算完)。
+                # 让我们改良一下：使用 v_count / scene_total_verts 的比例来染色会更直观。
+                # 或者使用绝对数量 (比如 100万面)。这里为了复刻 v2 效果，我们简化逻辑：
+                
+                # 假设基准：如果占场景总量的比例超过阈值
+                ratio = v_count / scene_total_verts
+                
+                # 这里稍微调整逻辑以适应滑块：
+                # 如果我们把滑块当做百分比阈值 (0.9 = 90% vertices)
+                if ratio >= m_vhigh: col.color_tag = 'COLOR_01'   # Red
+                elif ratio >= m_high: col.color_tag = 'COLOR_02'  # Orange
+                elif ratio >= m_med: col.color_tag = 'COLOR_03'   # Yellow
+                elif ratio >= m_low: col.color_tag = 'COLOR_04'   # Green
+                else: col.color_tag = 'COLOR_05'                  # Blue
+
+        # 保存备份
         scn.default_col_colors = str(backup)
-        
-        # 更新 UI 状态
         scn.CA_Toggle = True 
-        
         return {'FINISHED'}
-    
+
 class TOT_OT_CleanColors(bpy.types.Operator):
-    """Clear Analysis Results"""
+    """恢复集合名称和颜色"""
     bl_idname = "tot.cleancolors"
     bl_label = "Clear Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -365,70 +377,77 @@ class TOT_OT_CleanColors(bpy.types.Operator):
     def execute(self, context):
         scn = context.scene.tot_props
         
+        # 读取备份
+        data = {}
         if scn.default_col_colors:
-            try:
-                data = eval(scn.default_col_colors)
-                for col in bpy.data.collections:
-                    # 只有当集合还在时才恢复
-                    if col.name in data:
-                        col.color_tag = data[col.name]
-            except Exception as e:
-                print(f"Restore Error: {e}")
-        
-        # 归零状态
+            try: data = eval(scn.default_col_colors)
+            except: pass
+
+        for col in bpy.data.collections:
+            # 1. 还原名字 (去除 " | 10.5%" 这种后缀)
+            if ' | ' in col.name:
+                col.name = col.name.split(' | ')[0].strip()
+            
+            # 2. 还原颜色
+            if col.name in data:
+                col.color_tag = data[col.name]
+            else:
+                col.color_tag = 'NONE'
+
         scn.CA_Toggle = False
         scn.default_col_colors = ""
-        
         return {'FINISHED'}
 
-# --- 3D View Analyzer (同理) ---
+# ... (ViewAnalyzer Code stays roughly the same) ...
 class TOT_OT_ViewAnalyzer(bpy.types.Operator):
     bl_idname = "tot.viewanalyzer"
     bl_label = "Run 3D View Analyzer"
-    
     def execute(self, context):
         scn = context.scene.tot_props
-        # 备份当前显示模式
         if context.space_data.type == 'VIEW_3D':
             scn.last_shading = context.space_data.shading.color_type
-            # 切换为 Object Color 显示
             context.space_data.shading.type = 'SOLID'
             context.space_data.shading.color_type = 'OBJECT'
         
-        # [核心修复]
+        # 简单染色逻辑
+        max_v = 1
+        mesh_objs = [o for o in context.view_layer.objects if o.type == 'MESH']
+        for o in mesh_objs:
+            if len(o.data.vertices) > max_v: max_v = len(o.data.vertices)
+        
+        from mathutils import Color
+        for o in mesh_objs:
+            ratio = len(o.data.vertices) / max_v
+            # 红色(Hue 0)到蓝色(Hue 0.66)
+            c = Color()
+            c.hsv = (0.66 * (1.0 - ratio), 1.0, 1.0)
+            o.color = (c.r, c.g, c.b, 1.0)
+
         scn.AA_Toggle = True
         return {'FINISHED'}
 
 class TOT_OT_CleanViewAnalyzer(bpy.types.Operator):
     bl_idname = "tot.cleanviewanalyzer"
     bl_label = "Clear View Analyzer"
-    
     def execute(self, context):
         scn = context.scene.tot_props
-        # 还原
         if context.space_data.type == 'VIEW_3D':
-             # 防止出错，如果有备份则用备份，否则默认 MATERIAL
             target = scn.last_shading if scn.last_shading else 'MATERIAL'
             context.space_data.shading.color_type = target
         
-        # [核心修复]
+        # 恢复物体白色
+        for o in context.view_layer.objects:
+            o.color = (1,1,1,1)
+
         scn.AA_Toggle = False
         return {'FINISHED'}
 
-classes = (
-    TOT_OT_CollectionAnalyzer,
-    TOT_OT_CleanColors,
-    TOT_OT_ViewAnalyzer,
-    TOT_OT_CleanViewAnalyzer,
-)
-
+classes = (TOT_OT_CollectionAnalyzer, TOT_OT_CleanColors, TOT_OT_ViewAnalyzer, TOT_OT_CleanViewAnalyzer)
 def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
+    for cls in classes: bpy.utils.register_class(cls)
 
 def unregister():
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+    for cls in reversed(classes): bpy.utils.unregister_class(cls)
 
 ==================================================
 File Path: .\operators\geometry.py
@@ -868,14 +887,58 @@ class TOT_OT_ResizeImages(bpy.types.Operator):
         return {'FINISHED'}
 
 class TOT_OT_ClearDuplicateImage(bpy.types.Operator):
+    """清理重复贴图：将 .001, .002 结尾的图片替换为原始图片"""
     bl_idname = "tot.clearduplicateimage"
     bl_label = "Clear Duplicate Images"
+    bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        # 简单的去重逻辑：如果名字是以 .001, .002 结尾，尝试查找无后缀的原名
-        # 并替换用户的引用
-        # 这里仅作占位，实际去重逻辑比较复杂，建议先保留空壳或简单打印
-        self.report({'INFO'}, "Feature coming soon: Duplicate Cleaner")
+        cleaned_count = 0
+        
+        # 1. 建立映射表：{"Image.001": "Image", "Texture.002": "Texture"}
+        # 仅当不带后缀的原始图片存在时才进行替换
+        remap_dict = {} # Key: Duplicate Name, Value: Original Image Object
+        
+        # 获取所有图片
+        all_images = list(bpy.data.images)
+        
+        for img in all_images:
+            # 检查名字是否类似 "Name.001"
+            if len(img.name) > 4 and img.name[-4] == '.' and img.name[-3:].isdigit():
+                base_name = img.name[:-4] # 移除后缀
+                
+                # 查找是否存在原始图片
+                original_img = bpy.data.images.get(base_name)
+                
+                # 只有当原始图片存在，且不是同一个对象时
+                if original_img and original_img != img:
+                    # 也可以加一层校验：比如文件路径是否一致，防止误杀同名不同图
+                    # 这里简化逻辑：名字匹配即替换
+                    remap_dict[img.name] = original_img
+
+        if not remap_dict:
+            self.report({'INFO'}, "No duplicate images found.")
+            return {'FINISHED'}
+
+        # 2. 遍历所有材质，替换节点中的引用
+        for mat in bpy.data.materials:
+            if not mat.use_nodes or not mat.node_tree: continue
+            
+            for node in mat.node_tree.nodes:
+                if node.type == 'TEX_IMAGE' and node.image:
+                    if node.image.name in remap_dict:
+                        target_img = remap_dict[node.image.name]
+                        print(f"Swapping {node.image.name} -> {target_img.name} in material {mat.name}")
+                        node.image = target_img
+                        cleaned_count += 1
+                        
+        # 3. 清理未使用的图片 (可选：purge)
+        # 这里为了安全，只替换引用，不做 purge，用户可以手动 File -> Clean Up -> Unused Data Blocks
+        
+        # 刷新列表
+        bpy.ops.tot.updateimagelist()
+        
+        self.report({'INFO'}, f"Replaced {cleaned_count} duplicate image references.")
         return {'FINISHED'}
 
 classes = (
@@ -920,23 +983,27 @@ class TOT_OT_ViewportLODUpdate(bpy.types.Operator):
             return {'CANCELLED'}
         
         cam_loc = cam.matrix_world.translation
-        
-        # 2. 获取阈值
-        d0 = scn.lod_dist_0
-        d1 = scn.lod_dist_1
-        d2 = scn.lod_dist_2
+        d0, d1, d2 = scn.lod_dist_0, scn.lod_dist_1, scn.lod_dist_2
         
         count = 0
         
-        # 3. 遍历场景物体 (可以优化为只遍历选中的，或者指定集合)
+        # 3. 遍历场景物体
         for obj in context.scene.objects:
-            # 只处理几何体
             if obj.type not in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'}:
                 continue
-                
-            # 计算距离 (使用包围盒中心，比原点更准)
+
+            # --- [核心修改] 第一次运行时，保存原始状态 ---
+            # 我们使用自定义属性 (Custom Properties) 存储，不会影响渲染，且随文件保存
+            if "_tot_orig_display" not in obj:
+                obj["_tot_orig_display"] = obj.display_type
+            
+            if "_tot_orig_hide" not in obj:
+                # 记录原始的隐藏状态 (注意：int 0/1 转换)
+                obj["_tot_orig_hide"] = int(obj.hide_viewport)
+            # -----------------------------------------------
+
+            # 计算距离
             try:
-                # 简单计算：取包围盒8个点的平均值作为中心
                 bbox_world = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
                 center = sum(bbox_world, Vector()) / 8.0
             except:
@@ -944,26 +1011,18 @@ class TOT_OT_ViewportLODUpdate(bpy.types.Operator):
             
             dist = (center - cam_loc).length
             
-            # 4. 判定 Level
+            # 判定 Level
             level = 0
-            if dist <= d0:
-                level = 0
-            elif dist <= d1:
-                level = 1
-            elif dist <= d2:
-                level = 2
-            else:
-                level = 3
-                
-            # 5. 应用设置
-            # 获取对应层级的显示设置属性名
+            if dist <= d0: level = 0
+            elif dist <= d1: level = 1
+            elif dist <= d2: level = 2
+            else: level = 3
+            
+            # 获取设置并应用
             attr_name = f"view_lod{level}_display"
             display_type = getattr(scn, attr_name, 'BOUNDS')
-            
-            # 特殊处理：Level 3 是否隐藏
             should_hide = (level == 3 and scn.view_lod3_hide)
             
-            # 写入状态
             obj.display_type = display_type
             obj.hide_viewport = should_hide
             
@@ -973,18 +1032,52 @@ class TOT_OT_ViewportLODUpdate(bpy.types.Operator):
         return {'FINISHED'}
 
 class TOT_OT_ViewportLODReset(bpy.types.Operator):
-    """重置所有物体为 Textured 显示"""
+    """恢复物体原本的显示模式"""
     bl_idname = "tot.viewport_lod_reset"
     bl_label = "Reset Viewport"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        for obj in context.scene.objects:
-            if obj.type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}:
-                obj.display_type = 'TEXTURED'
-                obj.hide_viewport = False
+        restored_count = 0
+        default_count = 0
         
-        self.report({'INFO'}, "Viewport display reset.")
+        for obj in context.scene.objects:
+            # 只处理几何体
+            if obj.type not in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'}:
+                continue
+                
+            # --- [核心修改] 优先尝试从快照恢复 ---
+            if "_tot_orig_display" in obj:
+                # 恢复显示模式 (SOLID, WIRE, etc.)
+                # 有时候保存的是 int，有时候是 str，根据 blender 版本稍微容错一下
+                try:
+                    obj.display_type = obj["_tot_orig_display"]
+                except:
+                    # 万一出错，回退到 Textured
+                    obj.display_type = 'TEXTURED'
+                
+                # 恢复完成，删除快照，以便下次重新Update时记录新状态
+                del obj["_tot_orig_display"]
+                restored_count += 1
+            else:
+                # 如果没有快照 (比如手动操作过的物体)，默认回退到 Textured
+                obj.display_type = 'TEXTURED'
+                default_count += 1
+            
+            if "_tot_orig_hide" in obj:
+                # 恢复隐藏状态
+                obj.hide_viewport = bool(obj["_tot_orig_hide"])
+                del obj["_tot_orig_hide"]
+            else:
+                # 默认显示
+                obj.hide_viewport = False
+            # ---------------------------------------
+        
+        msg = f"Reset: Restored {restored_count} objects to original state"
+        if default_count > 0:
+            msg += f", reset {default_count} to default."
+            
+        self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 classes = (
@@ -1093,10 +1186,113 @@ class TOT_PT_MainPanel:
     bl_category = "Optimize" 
     bl_options = {'DEFAULT_CLOSED'}
 
+# 1. 集合分析器 (Collection Analyzer)
+class TOT_PT_CollectionAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "1. Collection Analyzer"
+    bl_idname = "TOT_PT_CollectionAnalyzer"
+    bl_order = 1 # 排序权重
+
+    def draw(self, context):
+        layout = self.layout
+        scn = context.scene.tot_props
+        
+        layout.prop(scn, "colA_Method", text="Method")
+        
+        # 如果是高级模式，显示颜色阈值
+        if scn.colA_Method == 'm2':
+            box = layout.box()
+            box.label(text="Color Thresholds (Vertex %):", icon='PREFERENCES')
+            
+            col = box.column(align=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_01'); r.prop(scn, "mult_veryhigh", slider=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_02'); r.prop(scn, "mult_high", slider=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_03'); r.prop(scn, "mult_medium", slider=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_04'); r.prop(scn, "mult_low", slider=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_05'); r.prop(scn, "mult_very_low", slider=True)
+
+        layout.separator()
+        row = layout.row(align=True)
+        row.scale_y = 1.2
+        
+        # Toggle 按钮逻辑
+        if not scn.CA_Toggle:
+            row.operator("tot.collectionanalyzer", text="Run Analyzer", icon='PLAY')
+        else:
+            row.operator("tot.cleancolors", text="Clear Analyzer", icon='X')
+            row.operator("tot.collectionanalyzer", text="", icon='FILE_REFRESH') # 刷新按钮
+
+# 2. 视图分析器 (View Analyzer)
+class TOT_PT_ViewAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "2. View Analyzer"
+    bl_idname = "TOT_PT_ViewAnalyzer"
+    bl_order = 2
+
+    def draw(self, context):
+        layout = self.layout
+        scn = context.scene.tot_props
+        
+        layout.label(text="Color Objects by Vert Count", icon='SCENE_DATA')
+        
+        row = layout.row(align=True)
+        row.scale_y = 1.2
+        if not scn.AA_Toggle:
+            row.operator("tot.viewanalyzer", text="Run View Analyzer", icon='PLAY')
+        else:
+            row.operator("tot.cleanviewanalyzer", text="Clear View Analyzer", icon='X')
+
+# 3. 贴图列表与缩放 (Image Resizer)
+class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "3. Image Resizer"
+    bl_idname = "TOT_PT_ImageResizer"
+    bl_order = 3
+
+    def draw(self, context):
+        layout = self.layout
+        scn = context.scene.tot_props
+        
+        # 扫描按钮
+        row = layout.row()
+        row.scale_y = 1.2
+        row.operator("tot.updateimagelist", text="Scan / Refresh Images", icon='FILE_REFRESH')
+        
+        # 统计信息
+        if scn.r_total_images > 0:
+            box = layout.box()
+            r = box.row()
+            r.label(text=f"Total: {scn.r_total_images}")
+            r.label(text=f"Mem: {scn.total_image_memory} MB")
+        
+        # 列表
+        layout.template_list("TOT_UL_ImageStats", "", scn, "image_list", scn, "custom_index_image_list", rows=5)
+        
+        # 选择工具
+        row = layout.row(align=True)
+        row.operator("tot.imglistselectall", text="Select All/None", icon='CHECKBOX_HLT')
+        
+        layout.separator()
+        layout.label(text="Resize Options:", icon='TOOL_SETTINGS')
+        
+        # 缩放选项
+        col = layout.column(align=True)
+        col.prop(scn, "resize_size", text="Target")
+        if scn.resize_size == 'c':
+            col.prop(scn, "custom_resize_size", text="Pixels")
+            
+        col.prop(scn, "duplicate_images", text="Safe Mode (Copy Files)")
+        if scn.duplicate_images and not scn.use_same_directory:
+             col.prop(scn, "custom_output_path", text="Output")
+             
+        # 执行缩放
+        row = layout.row()
+        row.scale_y = 1.4
+        row.operator("tot.resizeimages", text="Resize Selected Images", icon='IMAGE_DATA')
+
+# 4. LOD层级管理 (LOD Manager)
 class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
-    bl_label = "LOD Manager"
+    bl_label = "4. LOD Manager"
     bl_idname = "TOT_PT_LODManager"
-    
+    bl_order = 4
+
     def draw(self, context):
         layout = self.layout
         scn = context.scene.tot_props
@@ -1196,21 +1392,30 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
         box.label(text="Texture Optimization", icon='TEXTURE')
         # 这里复用之前的 Resize 逻辑，但建议未来整合进 LOD 逻辑
         box.label(text="See Image Resizer Panel below", icon='INFO')
-        
-# 原来的 Image Resizer 面板保持不变，作为独立工具存在
-class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
-    bl_label = "Image Tools"
-    bl_idname = "TOT_PT_ImageResizer"
-    # ... (保持之前的 draw 代码不变) ...
+
+# 5. 去除重复贴图 (Duplicate Remover)
+class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "5. Clean Up"
+    bl_idname = "TOT_PT_DuplicateRemover"
+    bl_order = 5
+    
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
-        layout.operator("tot.updateimagelist", text="Scan Images")
-        # ... (由于篇幅限制，这里复用之前生成的代码)
+        
+        box = layout.box()
+        box.label(text="Remove Duplicates", icon='BRUSH_DATA')
+        box.label(text="Merges Image.001 -> Image", icon='INFO')
+        
+        row = box.row()
+        row.scale_y = 1.2
+        row.operator("tot.clearduplicateimage", text="Remove Duplicate Images", icon='TRASH')        
 
 classes = (
-    TOT_PT_LODManager,
+    TOT_PT_CollectionAnalyzer,
+    TOT_PT_ViewAnalyzer,
     TOT_PT_ImageResizer,
+    TOT_PT_LODManager,
+    TOT_PT_DuplicateRemover
 )
 
 def register():

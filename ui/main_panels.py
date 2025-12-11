@@ -109,7 +109,7 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
 
 # 4. LOD层级管理 (LOD Manager)
 class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
-    bl_label = "LOD Manager"
+    bl_label = "4. LOD Manager"
     bl_idname = "TOT_PT_LODManager"
     bl_order = 4
 
