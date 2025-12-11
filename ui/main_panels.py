@@ -152,6 +152,14 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         row.scale_y = 1.4
         row.operator("tot.resizeimages", text=tr("Resize Selected Images"), icon='IMAGE_DATA')
 
+        layout.separator()
+        box_cam = layout.box()
+        box_cam.label(text=tr("AI / Camera Optimization"), icon='VIEW_CAMERA')
+        col = box_cam.column(align=True)
+        col.label(text=tr("Auto-calculate size based on screen coverage"), icon='INFO')
+        # 按钮
+        col.operator("tot.optimize_by_camera", text=tr("Run Camera Optimization"), icon='SHADING_RENDERED')
+
         # 分辨率切换器 (Texture Switcher) ---
         layout.separator()
         box = layout.box()
@@ -168,6 +176,11 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         # 2. 动态检测已生成的文件夹，并生成对应的切换按钮
         # 这样如果没有生成 512px 的，就不显示 512 的按钮，或者你可以硬编码常用的
         base_path = bpy.path.abspath("//")
+        # 2.1 检测 Camera Optimized 文件夹并显示按钮
+        if base_path and os.path.exists(os.path.join(base_path, "textures_camera_optimized")):
+            op = row.operator("tot.switch_resolution", text=tr("Auto-Opt"), icon='CAMERA_DATA')
+            op.target_res = "camera_optimized" # 传给 Operator 的特殊字符串
+
         found_resolutions = []
         if base_path and os.path.exists(base_path):
             try:

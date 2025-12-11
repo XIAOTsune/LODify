@@ -52,6 +52,11 @@ TRANSLATION_DICT = {
     "Disk Storage Management": "磁盘存储管理",
     "Texture Optimization": "贴图优化",
     "See Image Resizer Panel below": "请查看下方的贴图缩放面板",
+    "AI / Camera Optimization": "AI / 相机视角优化",
+    "Auto-calculate size based on screen coverage": "基于屏幕占比自动计算尺寸",
+    "Run Camera Optimization": "运行相机优化",
+    "Auto-Opt": "自动优化组",
+    "Camera Optimized: Generated": "相机优化完成：已生成",
     
     # --- 提示信息 ---
     "(No resized sets found)": "(未找到已生成的尺寸组)",

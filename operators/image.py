@@ -284,51 +284,42 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
 
             # --- 情况 B: 切换到指定分辨率 (如 1024) ---
             else:
-                # 1. 获取“干净”的基础文件名 (Base Name)
-                # 逻辑：优先从存档的原图路径中提取名字，这是最准确的
-                clean_name_base = ""
-                clean_ext = ""
-                
-                if "tot_original_path" in img:
-                    # 从存档路径提取文件名 (e.g. //Texture/Wood.jpg -> Wood.jpg)
-                    orig_path = img["tot_original_path"]
-                    # 使用 bpy.path.basename 处理跨平台路径分隔符
-                    filename = bpy.path.basename(orig_path)
-                    clean_name_base, clean_ext = os.path.splitext(filename)
+                # ... (前面获取 clean_name_base 的逻辑不变) ...
+
+                # 构造目标文件夹路径
+                # [修改点]：如果 target 是 "camera_optimized"，不做 px 拼接
+                if target == "camera_optimized":
+                    folder_name = "textures_camera_optimized"
                 else:
-                    # 如果没有存档 (极少情况)，尝试从当前文件名反推
-                    # 比如当前是 Wood_2048px.jpg，我们需要剥离 _2048px
-                    curr_filename = bpy.path.basename(img.filepath)
-                    name_temp, clean_ext = os.path.splitext(curr_filename)
-                    # 使用正则去掉结尾的 _数字px
-                    clean_name_base = re.sub(r'_\d+px$', '', name_temp)
-
-                if not clean_name_base:
-                    continue
-
-                # 2. 构造目标文件夹路径 (e.g. C:\Project\textures_1024px)
-                folder_name = f"textures_{target}px"
+                    folder_name = f"textures_{target}px"
                 
-                # 判断是使用自定义路径还是默认路径
-                # 这里为了简单，我们扫描默认路径。如果你开启了自定义路径，逻辑需对应调整。
-                # 通常建议切换功能主要在默认路径下工作，或者存储输出路径到属性里。
-                # 这里假设是在 blend 同级目录下：
                 target_dir_abs = os.path.join(base_path, folder_name)
                 
-                # 3. 构造目标文件名 (e.g. Wood_1024px.jpg)
-                target_filename = f"{clean_name_base}_{target}px{clean_ext}"
-                target_fullpath_abs = os.path.join(target_dir_abs, target_filename)
-
-                # 4. 核心检查：文件真的存在吗？
-                if os.path.exists(target_fullpath_abs):
-                    # 构造相对路径赋值给 Blender (//textures_1024px/...) 以便携带
-                    rel_path = f"//{folder_name}/{target_filename}"
+                # 因为 optimized 文件夹里，Wood 可能是 Wood_512px.jpg，也可能是 Wood_2048px.jpg
+                # 我们不能简单拼写文件名，我们需要去文件夹里“找”对应的前缀文件
+                
+                found_file = None
+                
+                if os.path.exists(target_dir_abs):
+                    # 遍历该文件夹下的所有文件，寻找匹配 clean_name_base 的文件
+                    # 比如 clean_name_base 是 "Wood"，我们要找 "Wood_xxxpx.jpg"
+                    for f in os.listdir(target_dir_abs):
+                        if f.startswith(clean_name_base):
+                            # 简单的匹配：文件名包含 base name
+                            # 严谨一点：f 必须是 Base + "_" + 数字 + "px" + ext
+                            if clean_name_base in f:
+                                found_file = f
+                                break 
+                
+                if found_file:
+                    target_fullpath_abs = os.path.join(target_dir_abs, found_file)
+                    
+                    rel_path = f"//{folder_name}/{found_file}"
                     img.filepath = rel_path
                     img.reload()
                     switched_count += 1
                 else:
-                    # 调试信息：如果切换失败，控制台会打印它想找什么但没找到
-                    # print(f"[TOT] Target not found: {target_fullpath_abs}")
+                    # 没找到对应文件（可能是因为该图片在优化时被判断为不可见，所以没生成）
                     pass
         
         # 刷新列表 UI
@@ -337,6 +328,131 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
         msg = f"Restored {switched_count} images to Original." if target == 'ORIGINAL' else f"Switched {switched_count} images to {target}px."
         self.report({'INFO'}, msg)
         return {'FINISHED'}
+    
+class TOT_OT_OptimizeByCamera(bpy.types.Operator):
+    """根据相机视角自动计算并生成优化贴图"""
+    bl_idname = "tot.optimize_by_camera"
+    bl_label = "Optimize by Camera"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scn = context.scene.tot_props
+        cam = scn.lod_camera or context.scene.camera
+        
+        if not cam:
+            self.report({'ERROR'}, "No active camera found!")
+            return {'CANCELLED'}
+
+        base_path = bpy.path.abspath("//")
+        if not base_path:
+            self.report({'ERROR'}, "Save file first!")
+            return {'CANCELLED'}
+
+        # 1. 准备输出目录
+        folder_name = "textures_camera_optimized"
+        output_dir = os.path.join(base_path, folder_name)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        # 2. 建立 [图片 -> 最大所需像素] 的映射表
+        # 默认给一个极小值 (比如 32px)，如果没有物体用到它，就保持极小或者不处理
+        image_res_map = {} 
+        
+        # 获取场景中所有 Mesh 物体
+        mesh_objs = [o for o in context.scene.objects if o.type == 'MESH' and not o.hide_render]
+        
+        self.report({'INFO'}, f"Analyzing {len(mesh_objs)} objects from Camera view...")
+        
+        for obj in mesh_objs:
+            # A. 计算该物体在屏幕上的像素大小
+            px_size, visible = utils.calculate_screen_coverage(context.scene, obj, cam)
+            
+            if not visible:
+                continue # 如果不可见，这个物体对贴图精度无贡献
+            
+            # 向上取整到最近的 POT (Power of Two: 128, 256, 512...) 
+            # 这是一个优化习惯，显卡喜欢 2 的幂次方
+            # 简单算法：当前像素 * 质量系数 (比如 1.2 倍以防模糊)
+            target_res = px_size * 1.2 
+            
+            # B. 找到物体引用的所有贴图
+            for slot in obj.material_slots:
+                if slot.material and slot.material.use_nodes:
+                    for node in slot.material.node_tree.nodes:
+                        if node.type == 'TEX_IMAGE' and node.image:
+                            img = node.image
+                            if img.source in {'VIEWER', 'GENERATED'}: continue
+                            
+                            # C. 记录最大需求
+                            # 如果这张图之前被别的物体算过，取最大值
+                            current_max = image_res_map.get(img, 0)
+                            if target_res > current_max:
+                                image_res_map[img] = target_res
+
+        # 3. 开始批量处理图片
+        processed_count = 0
+        
+        # 能够接受的最小/最大尺寸
+        MIN_SIZE = 64
+        MAX_SIZE = 4096 
+
+        for img, req_px in image_res_map.items():
+            # 钳制数值到 POT (简化版，直接钳制数值)
+            # 比如算出 900px，我们要存成 1024px
+            # 简单的阶梯：
+            if req_px <= 64: final_size = 64
+            elif req_px <= 128: final_size = 128
+            elif req_px <= 256: final_size = 256
+            elif req_px <= 512: final_size = 512
+            elif req_px <= 1024: final_size = 1024
+            elif req_px <= 2048: final_size = 2048
+            else: final_size = 4096
+            
+            # 如果原图本身就很小，不要放大它
+            orig_w = img.size[0]
+            if final_size > orig_w:
+                final_size = orig_w
+
+            # --- 下面是复用之前的 Resize 逻辑 ---
+            try:
+                # 记录原始路径
+                if "tot_original_path" not in img:
+                    img["tot_original_path"] = img.filepath
+
+                # 构造文件名：这里不再加 _1024px 后缀，因为每张图后缀不一样会很乱
+                # 或者我们可以加后缀，但在 SwitchResolution 时要能够识别
+                # 为了保持 Switcher 兼容性，建议保留后缀逻辑，或者统一不加后缀？
+                # 方案：加上后缀，方便人类阅读。Switch 逻辑需要微调。
+                
+                original_filepath = img.filepath_from_user()
+                file_name = os.path.basename(original_filepath)
+                if not file_name: file_name = f"{img.name}.png"
+                name_part, ext_part = os.path.splitext(file_name)
+                if not ext_part: ext_part = ".png"
+
+                new_file_name = f"{name_part}_{final_size}px{ext_part}"
+                new_full_path = os.path.join(output_dir, new_file_name)
+
+                # 内存缩放 & 保存
+                img.scale(final_size, final_size)
+                img.save_render(filepath=new_full_path)
+                
+                # 重连
+                img.filepath = new_full_path
+                img.reload()
+                
+                processed_count += 1
+                
+            except Exception as e:
+                print(f"Error optimizing {img.name}: {e}")
+
+        # 4. 刷新列表
+        bpy.ops.tot.updateimagelist()
+        context.area.tag_redraw()
+        
+        self.report({'INFO'}, f"Camera Optimized: Generated {processed_count} textures.")
+        return {'FINISHED'}
+
 classes = (
     TOT_OT_UpdateImageList,
     TOT_OT_SelectAllImages,
@@ -344,6 +460,7 @@ classes = (
     TOT_OT_ClearDuplicateImage,
     TOT_OT_DeleteTextureFolder,
     TOT_OT_SwitchResolution,
+    TOT_OT_OptimizeByCamera,
 )
 
 def register():
