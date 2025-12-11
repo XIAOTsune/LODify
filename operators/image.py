@@ -249,79 +249,94 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
         scn = context.scene.tot_props
         target = self.target_res
         
+        # 获取当前 blend 文件的绝对目录 (e.g. C:\Project\)
         base_path = bpy.path.abspath("//")
-        switched_count = 0
-        missing_count = 0
+        if not base_path:
+            self.report({'ERROR'}, "Save file first!")
+            return {'CANCELLED'}
 
+        switched_count = 0
+        
         for item in scn.image_list:
             img = bpy.data.images.get(item.tot_image_name)
             if not img: continue
             if img.source in {'VIEWER', 'GENERATED'}: continue
-
-            # --- 切换回原图 ---
+            
+            # --- 情况 A: 切换回原图 ---
             if target == 'ORIGINAL':
-                # 如果有存档记录，就恢复
+                # 只有当图片有“存档记录”时才能恢复
                 if "tot_original_path" in img:
                     orig_path = img["tot_original_path"]
-                    # 检查原图是否存在 (防止用户删了原图)
+                    
+                    # 检查文件是否还在
+                    # 注意：存档的路径通常是相对路径 (//Texture/abc.jpg)，需要转绝对路径检查
                     abs_orig_path = bpy.path.abspath(orig_path)
+                    
                     if os.path.exists(abs_orig_path):
                         img.filepath = orig_path
                         img.reload()
                         switched_count += 1
                     else:
-                        print(f"Original file missing: {abs_orig_path}")
-                        missing_count += 1
+                        print(f"[TOT] Original file missing: {abs_orig_path}")
                 else:
-                    # 如果没有存档，说明这张图可能从未被缩放过，保持原样
+                    # 没有存档，说明它本身就是原图，或者从未被本插件处理过
                     pass
 
-            # --- 切换到指定分辨率 (如 1024) ---
+            # --- 情况 B: 切换到指定分辨率 (如 1024) ---
             else:
-                # 1. 确定文件夹: textures_1024px
-                folder_name = f"textures_{target}px"
-                search_dir = os.path.join(base_path, folder_name)
+                # 1. 获取“干净”的基础文件名 (Base Name)
+                # 逻辑：优先从存档的原图路径中提取名字，这是最准确的
+                clean_name_base = ""
+                clean_ext = ""
                 
-                # 2. 推断目标文件名
-                # 难点：当前 img.filepath 可能是原名，也可能是 xxx_2048px.png
-                # 我们需要找到 "干净的" 基础名
-                current_filename = os.path.basename(img.filepath)
-                name_base, ext = os.path.splitext(current_filename)
-                
-                # 清洗文件名：如果当前文件名包含 _128px, _1024px 等，把它剥离
-                # 简单的做法是：如果有存档，用存档的文件名来推断
                 if "tot_original_path" in img:
-                    clean_name = os.path.basename(img["tot_original_path"])
-                    name_base, ext = os.path.splitext(clean_name)
+                    # 从存档路径提取文件名 (e.g. //Texture/Wood.jpg -> Wood.jpg)
+                    orig_path = img["tot_original_path"]
+                    # 使用 bpy.path.basename 处理跨平台路径分隔符
+                    filename = bpy.path.basename(orig_path)
+                    clean_name_base, clean_ext = os.path.splitext(filename)
                 else:
-                    # 如果没有存档，尝试智能剥离 (假设格式是 name_NUMpx)
-                    import re
-                    # 移除结尾的 _1234px
-                    name_base = re.sub(r'_\d+px$', '', name_base)
+                    # 如果没有存档 (极少情况)，尝试从当前文件名反推
+                    # 比如当前是 Wood_2048px.jpg，我们需要剥离 _2048px
+                    curr_filename = bpy.path.basename(img.filepath)
+                    name_temp, clean_ext = os.path.splitext(curr_filename)
+                    # 使用正则去掉结尾的 _数字px
+                    clean_name_base = re.sub(r'_\d+px$', '', name_temp)
 
-                # 构造目标路径: textures_1024px/name_1024px.png
-                target_filename = f"{name_base}_{target}px{ext}"
-                target_full_path = os.path.join(search_dir, target_filename)
+                if not clean_name_base:
+                    continue
 
-                # 3. 检查文件是否存在
-                if os.path.exists(target_full_path):
-                    img.filepath = target_full_path
+                # 2. 构造目标文件夹路径 (e.g. C:\Project\textures_1024px)
+                folder_name = f"textures_{target}px"
+                
+                # 判断是使用自定义路径还是默认路径
+                # 这里为了简单，我们扫描默认路径。如果你开启了自定义路径，逻辑需对应调整。
+                # 通常建议切换功能主要在默认路径下工作，或者存储输出路径到属性里。
+                # 这里假设是在 blend 同级目录下：
+                target_dir_abs = os.path.join(base_path, folder_name)
+                
+                # 3. 构造目标文件名 (e.g. Wood_1024px.jpg)
+                target_filename = f"{clean_name_base}_{target}px{clean_ext}"
+                target_fullpath_abs = os.path.join(target_dir_abs, target_filename)
+
+                # 4. 核心检查：文件真的存在吗？
+                if os.path.exists(target_fullpath_abs):
+                    # 构造相对路径赋值给 Blender (//textures_1024px/...) 以便携带
+                    rel_path = f"//{folder_name}/{target_filename}"
+                    img.filepath = rel_path
                     img.reload()
                     switched_count += 1
                 else:
-                    # 对应的缩放图不存在（可能没生成过）
+                    # 调试信息：如果切换失败，控制台会打印它想找什么但没找到
+                    # print(f"[TOT] Target not found: {target_fullpath_abs}")
                     pass
         
-        # 刷新列表更新大小显示
+        # 刷新列表 UI
         bpy.ops.tot.updateimagelist()
         
-        if target == 'ORIGINAL':
-            self.report({'INFO'}, f"Restored {switched_count} images to Original.")
-        else:
-            self.report({'INFO'}, f"Switched {switched_count} images to {target}px.")
-            
+        msg = f"Restored {switched_count} images to Original." if target == 'ORIGINAL' else f"Switched {switched_count} images to {target}px."
+        self.report({'INFO'}, msg)
         return {'FINISHED'}
-
 classes = (
     TOT_OT_UpdateImageList,
     TOT_OT_SelectAllImages,
