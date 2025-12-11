@@ -2,7 +2,8 @@ import os
 import re
 import bpy
 import shutil
-from .. import utils # 导入工具
+from .. import utils 
+import time
 
 class TOT_OT_UpdateImageList(bpy.types.Operator):
     bl_idname = "tot.updateimagelist"
@@ -330,12 +331,65 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
         return {'FINISHED'}
     
 class TOT_OT_OptimizeByCamera(bpy.types.Operator):
-    """根据相机视角自动计算并生成优化贴图"""
+    """【非阻塞版】根据相机视角自动计算并生成优化贴图"""
     bl_idname = "tot.optimize_by_camera"
-    bl_label = "Optimize by Camera"
+    bl_label = "Optimize by Camera (Async)"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
+    _timer = None
+    _queue = []       # 待处理任务队列
+    _processed = 0    # 已处理数量
+    _total_tasks = 0  # 总任务数
+    _output_dir = ""  # 输出路径
+    
+    # 状态变量
+    _phase = 'INIT'   # INIT -> ANALYZING -> PROCESSING -> FINISHED
+
+    TIME_BUDGET = 0.1
+
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            # --- 阶段 1: 分析阶段 ---
+            if self._phase == 'ANALYZING':
+                self.do_analysis(context)
+                self._phase = 'PROCESSING'
+                context.window_manager.progress_begin(0, self._total_tasks)
+                return {'RUNNING_MODAL'}
+
+            # --- 阶段 2: 动态批处理阶段 ---
+            elif self._phase == 'PROCESSING':
+                
+                # 记录这一帧开始的时间
+                start_time = time.time()
+                
+                # 【核心循环】只要队列不为空，且没超时，就一直干活！
+                while self._queue:
+                    # 1. 取出任务
+                    task_data = self._queue.pop(0)
+                    self.process_image_task(task_data)
+                    self._processed += 1
+                    
+                    # 2. 检查时间是否用完
+                    # 如果当前操作耗时已经超过了 TIME_BUDGET (比如 0.1秒)
+                    # 立即中断循环，把控制权还给 Blender 去刷新 UI
+                    if (time.time() - start_time) > self.TIME_BUDGET:
+                        break
+                
+                # 更新进度条 (不管处理了多少张，这一帧结束时更新一次)
+                context.window_manager.progress_update(self._processed)
+                
+                # 如果队列空了，说明做完了
+                if not self._queue:
+                    self._phase = 'FINISHED'
+            
+            # --- 阶段 3: 结束 ---
+            elif self._phase == 'FINISHED':
+                self.finish(context)
+                return {'FINISHED'}
+
+        return {'PASS_THROUGH'}
+
+    def invoke(self, context, event):
         scn = context.scene.tot_props
         cam = scn.lod_camera or context.scene.camera
         
@@ -347,126 +401,140 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         if not base_path:
             self.report({'ERROR'}, "Save file first!")
             return {'CANCELLED'}
+
+        # 启动定时器，每 0.01 秒触发一次 modal
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.01, window=context.window)
+        wm.modal_handler_add(self)
         
-        # --- [1. 获取用户设定的下限 (Floor)] ---
-        # 你的意图：这个选项现在代表“最低允许的分辨率”
+        # 初始化状态
+        self._phase = 'ANALYZING'
+        self._queue = []
+        self._processed = 0
+        self._output_dir = os.path.join(base_path, "textures_camera_optimized")
+        if not os.path.exists(self._output_dir):
+            os.makedirs(self._output_dir)
+            
+        self.report({'INFO'}, "Starting Camera Optimization...")
+        return {'RUNNING_MODAL'}
+
+    def do_analysis(self, context):
+        """分析场景，构建任务队列"""
+        scn = context.scene.tot_props
+        cam = scn.lod_camera or context.scene.camera
+        
+        # 1. 获取下限
         if scn.resize_size == 'c':
             min_user_floor = scn.custom_resize_size
         else:
-            try:
-                min_user_floor = int(scn.resize_size)
-            except:
-                min_user_floor = 64 # 默认兜底值
-        # -------------------------------------
-
-        # 准备输出目录
-        folder_name = "textures_camera_optimized"
-        output_dir = os.path.join(base_path, folder_name)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
-        image_res_map = {} 
+            try: min_user_floor = int(scn.resize_size)
+            except: min_user_floor = 64
         
+        image_res_map = {}
         mesh_objs = [o for o in context.scene.objects if o.type == 'MESH' and not o.hide_render]
         
-        self.report({'INFO'}, f"Analyzing {len(mesh_objs)} objects (Min Floor: {min_user_floor}px)...")
-        
+        # 这一步纯数学计算，通常很快，如果物体数过万才需要拆分
         for obj in mesh_objs:
-            # A. 计算屏幕占比
             px_size, visible = utils.calculate_screen_coverage(context.scene, obj, cam)
-            
             if not visible: continue 
             
-            # 基础算法：计算出的理想分辨率
+            # 基础需求 + 下限保护
             calculated_res = px_size * 1.2 
-            
-            # --- [2. 核心修改：下限保护] ---
-            # 无论物体多远，都不允许低于用户设定的 min_user_floor
-            # max(算出来的, 用户设定的底线)
             target_res = max(calculated_res, min_user_floor)
-            # -----------------------------
             
-            # B. 找到物体引用的贴图并更新最大需求
             for slot in obj.material_slots:
                 if slot.material and slot.material.use_nodes:
                     for node in slot.material.node_tree.nodes:
                         if node.type == 'TEX_IMAGE' and node.image:
                             img = node.image
                             if img.source in {'VIEWER', 'GENERATED'}: continue
-                            
                             current_max = image_res_map.get(img, 0)
-                            # 竞争逻辑：如果新的需求比之前的记录更大，就更新
                             if target_res > current_max:
                                 image_res_map[img] = target_res
-
-        # 3. 批量生成图片
-        processed_count = 0
         
+        # 将 Map 转换为任务列表
         for img, req_px in image_res_map.items():
+            self._queue.append((img, req_px))
             
-            # 归档到最近的 POT (2的幂次方)
-            # 因为前面已经用了 max(req, floor)，所以这里 req_px 一定 >= min_user_floor
-            
-            final_size = 4 
-            
-            if req_px <= 4: final_size = 4
-            elif req_px <= 8: final_size = 8
-            if req_px <= 16: final_size = 16
-            elif req_px <= 32: final_size = 32
-            if req_px <= 64: final_size = 64
-            elif req_px <= 128: final_size = 128
-            elif req_px <= 256: final_size = 256
-            elif req_px <= 512: final_size = 512
-            elif req_px <= 1024: final_size = 1024
-            elif req_px <= 2048: final_size = 2048
-            else: final_size = 4096
-            
-            # --- [3. 上限控制：不应该超过原图物理尺寸] ---
-            # 即使下限设了 2048，如果原图只有 512，强制放大没有意义，只会增加体积
-            # 所以我们要把 final_size 钳制在原图尺寸内
-            orig_w = img.size[0]
-            orig_h = img.size[1]
-            # 取原图长宽的最大值作为物理上限
-            max_orig_dim = max(orig_w, orig_h)
-            
-            if final_size > max_orig_dim:
-                final_size = max_orig_dim
-            # -------------------------------------------
-            if final_size < 4: final_size = 4
+        self._total_tasks = len(self._queue)
+        print(f"[TOT] Analysis complete. {self._total_tasks} textures to process.")
 
-            try:
-                if "tot_original_path" not in img:
-                    img["tot_original_path"] = img.filepath
+    def process_image_task(self, task_data):
+        """处理单张图片的逻辑"""
+        img, req_px = task_data
+        
+        # 1. 计算最终尺寸
+        final_size = 4
+        if req_px <= 4: final_size = 4
+        elif req_px <= 8: final_size = 8        
+        if req_px <= 16: final_size = 16
+        elif req_px <= 32: final_size = 32
+        elif req_px <= 64: final_size = 64
+        elif req_px <= 128: final_size = 128
+        elif req_px <= 256: final_size = 256
+        elif req_px <= 512: final_size = 512
+        elif req_px <= 1024: final_size = 1024
+        elif req_px <= 2048: final_size = 2048
+        else: final_size = 4096
+        
+        # 限制不超过原图
+        orig_w = img.size[0]
+        orig_h = img.size[1]
+        max_orig = max(orig_w, orig_h)
+        if final_size > max_orig: final_size = max_orig
+        if final_size < 4: final_size = 4
 
-                original_filepath = img.filepath_from_user()
-                file_name = os.path.basename(original_filepath)
-                if not file_name: file_name = f"{img.name}.png"
-                name_part, ext_part = os.path.splitext(file_name)
-                if not ext_part: ext_part = ".png"
+        try:
+            # 构造路径
+            if "tot_original_path" not in img:
+                img["tot_original_path"] = img.filepath
 
-                # 文件名带上分辨率后缀
-                new_file_name = f"{name_part}_{final_size}px{ext_part}"
-                new_full_path = os.path.join(output_dir, new_file_name)
+            original_filepath = img.filepath_from_user()
+            file_name = os.path.basename(original_filepath)
+            if not file_name: file_name = f"{img.name}.png"
+            name_part, ext_part = os.path.splitext(file_name)
+            if not ext_part: ext_part = ".png"
 
-                # 生成与保存
-                # 只有当最终尺寸确实小于原图时，或者为了生成文件，我们才执行 scale
-                # 这里为了统一管理，我们执行生成
-                img.scale(final_size, final_size)
-                img.save_render(filepath=new_full_path)
-                
+            new_file_name = f"{name_part}_{final_size}px{ext_part}"
+            new_full_path = os.path.join(self._output_dir, new_file_name)
+
+            # --- [关键优化] 智能缓存检查 ---
+            # 如果文件已经存在，且我们认为无需覆盖，则直接使用，跳过 scale 和 save
+            file_exists = os.path.exists(new_full_path)
+            
+            if file_exists:
+                # 只有当文件存在，我们直接重连，不进行 scale 和 I/O 操作
+                # 这会极大地消除“重复运行”时的卡顿
                 img.filepath = new_full_path
                 img.reload()
-                
-                processed_count += 1
-                
-            except Exception as e:
-                print(f"Error optimizing {img.name}: {e}")
+                # print(f"Skipped (Cached): {new_file_name}")
+            else:
+                # 文件不存在，必须生成
+                # Scale 和 Save 是最耗时的，这步在 Modal 里执行，不会卡死 UI
+                img.scale(final_size, final_size)
+                img.save_render(filepath=new_full_path)
+                img.filepath = new_full_path
+                img.reload()
 
-        bpy.ops.tot.updateimagelist()
-        context.area.tag_redraw()
+        except Exception as e:
+            print(f"Error processing {img.name}: {e}")
+
+    def finish(self, context):
+        """结束清理"""
+        context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
         
-        self.report({'INFO'}, f"Camera Optimized: {processed_count} textures (Min Floor: {min_user_floor}px).")
-        return {'FINISHED'}
+        bpy.ops.tot.updateimagelist()
+        
+        # 强制刷新 UI
+        for area in context.screen.areas:
+            area.tag_redraw()
+            
+        self.report({'INFO'}, f"Camera Optimization Complete! Processed {self._processed} textures.")
+
+    def cancel(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
 
 classes = (
     TOT_OT_UpdateImageList,
