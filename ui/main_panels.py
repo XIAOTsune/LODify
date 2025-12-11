@@ -1,4 +1,5 @@
 import bpy
+import os
 
 class TOT_PT_MainPanel:
     bl_space_type = 'VIEW_3D'
@@ -106,6 +107,42 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         row = layout.row()
         row.scale_y = 1.4
         row.operator("tot.resizeimages", text="Resize Selected Images", icon='IMAGE_DATA')
+
+        # 分辨率切换器 (Texture Switcher) ---
+        layout.separator()
+        box = layout.box()
+        box.label(text="Texture Switcher (Global)", icon='UV_SYNC_SELECT')
+        
+        # 只有在保存文件后才能从文件夹加载
+        row = box.row(align=True)
+        row.scale_y = 1.2
+        
+        # 1. 原图按钮
+        op = row.operator("tot.switch_resolution", text="Original", icon='FILE_IMAGE')
+        op.target_res = "ORIGINAL"
+        
+        # 2. 动态检测已生成的文件夹，并生成对应的切换按钮
+        # 这样如果没有生成 512px 的，就不显示 512 的按钮，或者你可以硬编码常用的
+        base_path = bpy.path.abspath("//")
+        found_resolutions = []
+        if base_path and os.path.exists(base_path):
+            try:
+                for item in os.listdir(base_path):
+                    if os.path.isdir(os.path.join(base_path, item)) and item.startswith("textures_") and item.endswith("px"):
+                        # 解析 "textures_1024px" -> "1024"
+                        res_str = item.replace("textures_", "").replace("px", "")
+                        if res_str.isdigit():
+                            found_resolutions.append(res_str)
+            except: pass
+            
+        found_resolutions.sort(key=int) # 按数字大小排序
+        
+        if found_resolutions:
+            for res in found_resolutions:
+                op = row.operator("tot.switch_resolution", text=f"{res}px")
+                op.target_res = res
+        else:
+            row.label(text="(No resized sets found)")
 
 # 4. LOD层级管理 (LOD Manager)
 class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
@@ -215,20 +252,55 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
 
 # 5. 去除重复贴图 (Duplicate Remover)
 class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
-    bl_label = "5. Clean Up"
+    bl_label = "5. Clean Up & Storage"
     bl_idname = "TOT_PT_DuplicateRemover"
     bl_order = 5
     
     def draw(self, context):
         layout = self.layout
+        scn = context.scene.tot_props
         
+        # ... (Data Cleanup 部分保持不变) ...
         box = layout.box()
-        box.label(text="Remove Duplicates", icon='BRUSH_DATA')
-        box.label(text="Merges Image.001 -> Image", icon='INFO')
+        box.label(text="Data Cleanup", icon='BRUSH_DATA')
+        col = box.column(align=True)
+        col.operator("tot.clearduplicateimage", text="Merge Duplicate Images (.001)", icon='TRASH')
+
+        # --- 外部文件夹管理 (修复版) ---
+        box = layout.box()
+        box.label(text="Disk Storage Management", icon='FILE_FOLDER')
         
-        row = box.row()
-        row.scale_y = 1.2
-        row.operator("tot.clearduplicateimage", text="Remove Duplicate Images", icon='TRASH')        
+        # 1. 获取绝对路径，并标准化路径分隔符
+        raw_path = bpy.path.abspath("//")
+        base_path = os.path.normpath(raw_path) if raw_path else None
+        
+        if not base_path or not os.path.exists(base_path):
+            box.label(text="Save file to see texture folders", icon='ERROR')
+        else:
+            texture_folders = []
+            try:
+                # 扫描
+                for item in os.listdir(base_path):
+                    full_path = os.path.join(base_path, item)
+                    # 必须是目录 且 名字匹配
+                    if os.path.isdir(full_path) and item.startswith("textures_"):
+                        texture_folders.append(item)
+            except Exception as e:
+                box.label(text=f"Scan Error: {str(e)}", icon='ERROR')
+            
+            if not texture_folders:
+                box.label(text="No generated folders found.", icon='INFO')
+            else:
+                box.label(text=f"Found {len(texture_folders)} Texture Sets:", icon='FILE_IMAGE')
+                
+                for folder in texture_folders:
+                    row = box.row()
+                    row.alignment = 'EXPAND'
+                    # 文件夹图标 + 名字
+                    row.label(text=folder, icon='FOLDER_REDIRECT')
+                    # 删除按钮
+                    op = row.operator("tot.delete_texture_folder", text="", icon='X')
+                    op.folder_name = folder
 
 classes = (
     TOT_PT_CollectionAnalyzer,
