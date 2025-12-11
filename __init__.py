@@ -8,8 +8,8 @@ from . import operators
 bl_info = {
     "name": "ToOptimize Tools (LOD Edition)",
     "author": "Your Name",
-    "version": (1, 3, 0),
-    "blender": (3, 6, 0), # 设置为你支持的最低版本
+    "version": (2, 0, 0),
+    "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
     "description": "全场景性能优化：贴图、减面与视窗管理",
     "warning": "",

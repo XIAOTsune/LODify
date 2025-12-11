@@ -95,14 +95,58 @@ class TOT_OT_ResizeImages(bpy.types.Operator):
         return {'FINISHED'}
 
 class TOT_OT_ClearDuplicateImage(bpy.types.Operator):
+    """清理重复贴图：将 .001, .002 结尾的图片替换为原始图片"""
     bl_idname = "tot.clearduplicateimage"
     bl_label = "Clear Duplicate Images"
+    bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        # 简单的去重逻辑：如果名字是以 .001, .002 结尾，尝试查找无后缀的原名
-        # 并替换用户的引用
-        # 这里仅作占位，实际去重逻辑比较复杂，建议先保留空壳或简单打印
-        self.report({'INFO'}, "Feature coming soon: Duplicate Cleaner")
+        cleaned_count = 0
+        
+        # 1. 建立映射表：{"Image.001": "Image", "Texture.002": "Texture"}
+        # 仅当不带后缀的原始图片存在时才进行替换
+        remap_dict = {} # Key: Duplicate Name, Value: Original Image Object
+        
+        # 获取所有图片
+        all_images = list(bpy.data.images)
+        
+        for img in all_images:
+            # 检查名字是否类似 "Name.001"
+            if len(img.name) > 4 and img.name[-4] == '.' and img.name[-3:].isdigit():
+                base_name = img.name[:-4] # 移除后缀
+                
+                # 查找是否存在原始图片
+                original_img = bpy.data.images.get(base_name)
+                
+                # 只有当原始图片存在，且不是同一个对象时
+                if original_img and original_img != img:
+                    # 也可以加一层校验：比如文件路径是否一致，防止误杀同名不同图
+                    # 这里简化逻辑：名字匹配即替换
+                    remap_dict[img.name] = original_img
+
+        if not remap_dict:
+            self.report({'INFO'}, "No duplicate images found.")
+            return {'FINISHED'}
+
+        # 2. 遍历所有材质，替换节点中的引用
+        for mat in bpy.data.materials:
+            if not mat.use_nodes or not mat.node_tree: continue
+            
+            for node in mat.node_tree.nodes:
+                if node.type == 'TEX_IMAGE' and node.image:
+                    if node.image.name in remap_dict:
+                        target_img = remap_dict[node.image.name]
+                        print(f"Swapping {node.image.name} -> {target_img.name} in material {mat.name}")
+                        node.image = target_img
+                        cleaned_count += 1
+                        
+        # 3. 清理未使用的图片 (可选：purge)
+        # 这里为了安全，只替换引用，不做 purge，用户可以手动 File -> Clean Up -> Unused Data Blocks
+        
+        # 刷新列表
+        bpy.ops.tot.updateimagelist()
+        
+        self.report({'INFO'}, f"Replaced {cleaned_count} duplicate image references.")
         return {'FINISHED'}
 
 classes = (

@@ -6,10 +6,113 @@ class TOT_PT_MainPanel:
     bl_category = "Optimize" 
     bl_options = {'DEFAULT_CLOSED'}
 
+# 1. 集合分析器 (Collection Analyzer)
+class TOT_PT_CollectionAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "1. Collection Analyzer"
+    bl_idname = "TOT_PT_CollectionAnalyzer"
+    bl_order = 1 # 排序权重
+
+    def draw(self, context):
+        layout = self.layout
+        scn = context.scene.tot_props
+        
+        layout.prop(scn, "colA_Method", text="Method")
+        
+        # 如果是高级模式，显示颜色阈值
+        if scn.colA_Method == 'm2':
+            box = layout.box()
+            box.label(text="Color Thresholds (Vertex %):", icon='PREFERENCES')
+            
+            col = box.column(align=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_01'); r.prop(scn, "mult_veryhigh", slider=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_02'); r.prop(scn, "mult_high", slider=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_03'); r.prop(scn, "mult_medium", slider=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_04'); r.prop(scn, "mult_low", slider=True)
+            r = col.row(); r.label(text="", icon='COLLECTION_COLOR_05'); r.prop(scn, "mult_very_low", slider=True)
+
+        layout.separator()
+        row = layout.row(align=True)
+        row.scale_y = 1.2
+        
+        # Toggle 按钮逻辑
+        if not scn.CA_Toggle:
+            row.operator("tot.collectionanalyzer", text="Run Analyzer", icon='PLAY')
+        else:
+            row.operator("tot.cleancolors", text="Clear Analyzer", icon='X')
+            row.operator("tot.collectionanalyzer", text="", icon='FILE_REFRESH') # 刷新按钮
+
+# 2. 视图分析器 (View Analyzer)
+class TOT_PT_ViewAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "2. View Analyzer"
+    bl_idname = "TOT_PT_ViewAnalyzer"
+    bl_order = 2
+
+    def draw(self, context):
+        layout = self.layout
+        scn = context.scene.tot_props
+        
+        layout.label(text="Color Objects by Vert Count", icon='SCENE_DATA')
+        
+        row = layout.row(align=True)
+        row.scale_y = 1.2
+        if not scn.AA_Toggle:
+            row.operator("tot.viewanalyzer", text="Run View Analyzer", icon='PLAY')
+        else:
+            row.operator("tot.cleanviewanalyzer", text="Clear View Analyzer", icon='X')
+
+# 3. 贴图列表与缩放 (Image Resizer)
+class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "3. Image Resizer"
+    bl_idname = "TOT_PT_ImageResizer"
+    bl_order = 3
+
+    def draw(self, context):
+        layout = self.layout
+        scn = context.scene.tot_props
+        
+        # 扫描按钮
+        row = layout.row()
+        row.scale_y = 1.2
+        row.operator("tot.updateimagelist", text="Scan / Refresh Images", icon='FILE_REFRESH')
+        
+        # 统计信息
+        if scn.r_total_images > 0:
+            box = layout.box()
+            r = box.row()
+            r.label(text=f"Total: {scn.r_total_images}")
+            r.label(text=f"Mem: {scn.total_image_memory} MB")
+        
+        # 列表
+        layout.template_list("TOT_UL_ImageStats", "", scn, "image_list", scn, "custom_index_image_list", rows=5)
+        
+        # 选择工具
+        row = layout.row(align=True)
+        row.operator("tot.imglistselectall", text="Select All/None", icon='CHECKBOX_HLT')
+        
+        layout.separator()
+        layout.label(text="Resize Options:", icon='TOOL_SETTINGS')
+        
+        # 缩放选项
+        col = layout.column(align=True)
+        col.prop(scn, "resize_size", text="Target")
+        if scn.resize_size == 'c':
+            col.prop(scn, "custom_resize_size", text="Pixels")
+            
+        col.prop(scn, "duplicate_images", text="Safe Mode (Copy Files)")
+        if scn.duplicate_images and not scn.use_same_directory:
+             col.prop(scn, "custom_output_path", text="Output")
+             
+        # 执行缩放
+        row = layout.row()
+        row.scale_y = 1.4
+        row.operator("tot.resizeimages", text="Resize Selected Images", icon='IMAGE_DATA')
+
+# 4. LOD层级管理 (LOD Manager)
 class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
     bl_label = "LOD Manager"
     bl_idname = "TOT_PT_LODManager"
-    
+    bl_order = 4
+
     def draw(self, context):
         layout = self.layout
         scn = context.scene.tot_props
@@ -109,21 +212,30 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
         box.label(text="Texture Optimization", icon='TEXTURE')
         # 这里复用之前的 Resize 逻辑，但建议未来整合进 LOD 逻辑
         box.label(text="See Image Resizer Panel below", icon='INFO')
-        
-# 原来的 Image Resizer 面板保持不变，作为独立工具存在
-class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
-    bl_label = "Image Tools"
-    bl_idname = "TOT_PT_ImageResizer"
-    # ... (保持之前的 draw 代码不变) ...
+
+# 5. 去除重复贴图 (Duplicate Remover)
+class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "5. Clean Up"
+    bl_idname = "TOT_PT_DuplicateRemover"
+    bl_order = 5
+    
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
-        layout.operator("tot.updateimagelist", text="Scan Images")
-        # ... (由于篇幅限制，这里复用之前生成的代码)
+        
+        box = layout.box()
+        box.label(text="Remove Duplicates", icon='BRUSH_DATA')
+        box.label(text="Merges Image.001 -> Image", icon='INFO')
+        
+        row = box.row()
+        row.scale_y = 1.2
+        row.operator("tot.clearduplicateimage", text="Remove Duplicate Images", icon='TRASH')        
 
 classes = (
-    TOT_PT_LODManager,
+    TOT_PT_CollectionAnalyzer,
+    TOT_PT_ViewAnalyzer,
     TOT_PT_ImageResizer,
+    TOT_PT_LODManager,
+    TOT_PT_DuplicateRemover
 )
 
 def register():

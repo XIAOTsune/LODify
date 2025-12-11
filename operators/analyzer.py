@@ -2,7 +2,7 @@ import bpy
 from .. import utils
 
 class TOT_OT_CollectionAnalyzer(bpy.types.Operator):
-    """Run Collection Analyzer"""
+    """根据顶点数标记集合颜色并显示百分比"""
     bl_idname = "tot.collectionanalyzer"
     bl_label = "Run Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -10,53 +10,72 @@ class TOT_OT_CollectionAnalyzer(bpy.types.Operator):
     def execute(self, context):
         scn = context.scene.tot_props
         
-        # 1. 清理旧状态
+        # 1. 强制清理旧状态
         bpy.ops.tot.cleancolors()
 
         self.report({'INFO'}, "Analyzing Collections...")
         
-        # 备份当前颜色状态，以便 Clear 时恢复
-        backup = {}
-        
-        # 获取基础阈值 (假设基准是 100万面，你可以调整这个基数)
-        BASE_COUNT = 1000000 
-        
-        # 遍历所有集合
-        for col in bpy.data.collections:
-            # 记录原始颜色
-            backup[col.name] = col.color_tag
-            
-            # 计算该集合的顶点数
-            v_count = utils.get_collection_vertex_count(col)
-            
-            # 逻辑判定：根据顶点数赋予颜色
-            # COLOR_01: Red (Very High)
-            # COLOR_02: Orange (High)
-            # COLOR_03: Yellow (Medium)
-            # COLOR_04: Green (Low)
-            # COLOR_05: Blue (Very Low/Safe)
-            
-            if v_count > (BASE_COUNT * scn.mult_veryhigh): # 0.9
-                col.color_tag = 'COLOR_01'
-            elif v_count > (BASE_COUNT * scn.mult_high):   # 0.8
-                col.color_tag = 'COLOR_02'
-            elif v_count > (BASE_COUNT * scn.mult_medium): # 0.6
-                col.color_tag = 'COLOR_03'
-            elif v_count > (BASE_COUNT * scn.mult_low):    # 0.2
-                col.color_tag = 'COLOR_04'
-            else:
-                col.color_tag = 'NONE' # 或者 'COLOR_05'
+        # 2. 获取参数
+        if scn.colA_Method == 'm1':
+            m_vhigh, m_high, m_med, m_low = 0.9, 0.8, 0.6, 0.2
+        else:
+            m_vhigh = scn.mult_veryhigh
+            m_high = scn.mult_high
+            m_med = scn.mult_medium
+            m_low = scn.mult_low
 
-        # 保存备份数据到字符串属性中
+        backup = {}
+        scene_total_verts = 0
+        max_col_verts = 0
+
+        # 3. 统计全场景
+        for obj in context.view_layer.objects:
+            if obj.type == 'MESH':
+                 scene_total_verts += len(obj.data.vertices) # 简单统计，为了速度
+        
+        if scene_total_verts == 0: scene_total_verts = 1 # 防止除以0
+
+        # 4. 遍历集合
+        for col in bpy.data.collections:
+            # 备份原始颜色
+            backup[col.name] = col.color_tag
+            col.color_tag = 'NONE' # 重置
+
+            # 计算该集合顶点数
+            v_count = utils.get_collection_vertex_count(col)
+            if v_count > max_col_verts: max_col_verts = v_count
+
+            # 只有当集合有东西时才处理
+            if v_count > 0:
+                # 4.1 重命名：增加百分比后缀
+                percent = (v_count / scene_total_verts) * 100.0
+                col.name = f"{col.name} | {percent:.1f}%"
+
+                # 4.2 颜色判定 (相对于场景中最大的集合，或者固定阈值? 旧逻辑是用 max_col_verts 作为基准)
+                # 但旧逻辑是在循环里动态更新 highest_col，这里为了准确，应该用 scene_total_verts 或预设大数值
+                # 这里采用：基于当前集合占总场景的比例，或者基于绝对数量。
+                # 移植 v2 逻辑：它是动态对比 highest_col (但在循环里 highest 还没算完)。
+                # 让我们改良一下：使用 v_count / scene_total_verts 的比例来染色会更直观。
+                # 或者使用绝对数量 (比如 100万面)。这里为了复刻 v2 效果，我们简化逻辑：
+                
+                # 假设基准：如果占场景总量的比例超过阈值
+                ratio = v_count / scene_total_verts
+                
+                # 这里稍微调整逻辑以适应滑块：
+                # 如果我们把滑块当做百分比阈值 (0.9 = 90% vertices)
+                if ratio >= m_vhigh: col.color_tag = 'COLOR_01'   # Red
+                elif ratio >= m_high: col.color_tag = 'COLOR_02'  # Orange
+                elif ratio >= m_med: col.color_tag = 'COLOR_03'   # Yellow
+                elif ratio >= m_low: col.color_tag = 'COLOR_04'   # Green
+                else: col.color_tag = 'COLOR_05'                  # Blue
+
+        # 保存备份
         scn.default_col_colors = str(backup)
-        
-        # 更新 UI 状态
         scn.CA_Toggle = True 
-        
         return {'FINISHED'}
-    
+
 class TOT_OT_CleanColors(bpy.types.Operator):
-    """Clear Analysis Results"""
+    """恢复集合名称和颜色"""
     bl_idname = "tot.cleancolors"
     bl_label = "Clear Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -64,67 +83,74 @@ class TOT_OT_CleanColors(bpy.types.Operator):
     def execute(self, context):
         scn = context.scene.tot_props
         
+        # 读取备份
+        data = {}
         if scn.default_col_colors:
-            try:
-                data = eval(scn.default_col_colors)
-                for col in bpy.data.collections:
-                    # 只有当集合还在时才恢复
-                    if col.name in data:
-                        col.color_tag = data[col.name]
-            except Exception as e:
-                print(f"Restore Error: {e}")
-        
-        # 归零状态
+            try: data = eval(scn.default_col_colors)
+            except: pass
+
+        for col in bpy.data.collections:
+            # 1. 还原名字 (去除 " | 10.5%" 这种后缀)
+            if ' | ' in col.name:
+                col.name = col.name.split(' | ')[0].strip()
+            
+            # 2. 还原颜色
+            if col.name in data:
+                col.color_tag = data[col.name]
+            else:
+                col.color_tag = 'NONE'
+
         scn.CA_Toggle = False
         scn.default_col_colors = ""
-        
         return {'FINISHED'}
 
-# --- 3D View Analyzer (同理) ---
+# ... (ViewAnalyzer Code stays roughly the same) ...
 class TOT_OT_ViewAnalyzer(bpy.types.Operator):
     bl_idname = "tot.viewanalyzer"
     bl_label = "Run 3D View Analyzer"
-    
     def execute(self, context):
         scn = context.scene.tot_props
-        # 备份当前显示模式
         if context.space_data.type == 'VIEW_3D':
             scn.last_shading = context.space_data.shading.color_type
-            # 切换为 Object Color 显示
             context.space_data.shading.type = 'SOLID'
             context.space_data.shading.color_type = 'OBJECT'
         
-        # [核心修复]
+        # 简单染色逻辑
+        max_v = 1
+        mesh_objs = [o for o in context.view_layer.objects if o.type == 'MESH']
+        for o in mesh_objs:
+            if len(o.data.vertices) > max_v: max_v = len(o.data.vertices)
+        
+        from mathutils import Color
+        for o in mesh_objs:
+            ratio = len(o.data.vertices) / max_v
+            # 红色(Hue 0)到蓝色(Hue 0.66)
+            c = Color()
+            c.hsv = (0.66 * (1.0 - ratio), 1.0, 1.0)
+            o.color = (c.r, c.g, c.b, 1.0)
+
         scn.AA_Toggle = True
         return {'FINISHED'}
 
 class TOT_OT_CleanViewAnalyzer(bpy.types.Operator):
     bl_idname = "tot.cleanviewanalyzer"
     bl_label = "Clear View Analyzer"
-    
     def execute(self, context):
         scn = context.scene.tot_props
-        # 还原
         if context.space_data.type == 'VIEW_3D':
-             # 防止出错，如果有备份则用备份，否则默认 MATERIAL
             target = scn.last_shading if scn.last_shading else 'MATERIAL'
             context.space_data.shading.color_type = target
         
-        # [核心修复]
+        # 恢复物体白色
+        for o in context.view_layer.objects:
+            o.color = (1,1,1,1)
+
         scn.AA_Toggle = False
         return {'FINISHED'}
 
-classes = (
-    TOT_OT_CollectionAnalyzer,
-    TOT_OT_CleanColors,
-    TOT_OT_ViewAnalyzer,
-    TOT_OT_CleanViewAnalyzer,
-)
-
+classes = (TOT_OT_CollectionAnalyzer, TOT_OT_CleanColors, TOT_OT_ViewAnalyzer, TOT_OT_CleanViewAnalyzer)
 def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
+    for cls in classes: bpy.utils.register_class(cls)
 
 def unregister():
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+    for cls in reversed(classes): bpy.utils.unregister_class(cls)

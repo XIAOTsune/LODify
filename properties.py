@@ -34,6 +34,27 @@ class TOT_Props(bpy.types.PropertyGroup):
     default_col_colors: StringProperty() 
     last_shading: StringProperty()
 
+    # 贴图管理
+    image_list: CollectionProperty(type=TOT_ImageItem)
+    custom_index_image_list: IntProperty()
+    
+    # 缩放相关
+    resize_size: EnumProperty(
+        name="Target Size",
+        items=[
+            ('128', '128 px', ''), ('256', '256 px', ''), ('512', '512 px', ''),
+            ('1024', '1024 px', ''), ('2048', '2048 px', ''), ('c', 'Custom', '')
+        ],
+        default='1024'
+    )
+    custom_resize_size: IntProperty(default=1024, min=4, name="Custom Px")
+    use_same_directory: BoolProperty(default=True, name="Save in Blend Dir")
+    custom_output_path: StringProperty(subtype='DIR_PATH', name="Custom Path")
+    duplicate_images: BoolProperty(default=True, name="Duplicate Files") # 是否另存为副本
+
+    # 统计信息
+    r_total_images: IntProperty(name="Total Images")
+    total_image_memory: StringProperty(name="Total Memory")
     # ==========================================================
     # 2. LOD 管理器核心设置 (LOD Manager Core)
     # ==========================================================
@@ -74,7 +95,6 @@ class TOT_Props(bpy.types.PropertyGroup):
     view_lod1_display: EnumProperty(name="L1 Display", items=display_items, default='SOLID')
     view_lod2_display: EnumProperty(name="L2 Display", items=display_items, default='WIRE')
     view_lod3_display: EnumProperty(name="L3 Display", items=display_items, default='BOUNDS')
-    
     view_lod3_hide: BoolProperty(name="Hide at L3", description="在极远距离直接隐藏物体", default=False)
 
     # ==========================================================
@@ -110,33 +130,6 @@ class TOT_Props(bpy.types.PropertyGroup):
         max=1.0, 
         description="最远距离时的压缩比例 (Decimate Ratio) 或 强度因子"
     )
-    # ==========================================================
-    # 5. 维度一：贴图管理 (Texture Management)
-    # ==========================================================
-    image_list: CollectionProperty(type=TOT_ImageItem)
-    custom_index_image_list: IntProperty()
-    
-    image_data_method: EnumProperty(
-        name="Source",
-        items=[('s1', 'Blend Data', ''), ('s2', 'Original Files', '')],
-        default='s1'
-    )
-    resize_size: EnumProperty(
-        name="Target Size",
-        items=[
-            ('128', '128 px', ''), ('256', '256 px', ''), ('512', '512 px', ''),
-            ('1024', '1024 px', ''), ('2048', '2048 px', ''), ('c', 'Custom', '')
-        ],
-        default='1024'
-    )
-    custom_resize_size: IntProperty(default=1024, min=4)
-    use_same_directory: BoolProperty(default=True, name="Same Directory")
-    custom_output_path: StringProperty(subtype='DIR_PATH')
-    duplicate_images: BoolProperty(default=True, name="Duplicate Files")
-
-    # 统计信息
-    r_total_images: IntProperty()
-    total_image_memory: StringProperty()
 
 # 注册列表
 classes = (
