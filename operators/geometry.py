@@ -179,6 +179,7 @@ class TOT_OT_GeoLODUpdate(bpy.types.Operator):
         
         updated = 0
         
+        # 预查找 Identifier
         gn_identifier = None
         if method == 'GNODES':
             group = bpy.data.node_groups.get("TOT_GEO_LOD_Basic")
@@ -199,6 +200,7 @@ class TOT_OT_GeoLODUpdate(bpy.types.Operator):
             
             dist = (center - cam_loc).length
             
+            # 4级判定
             if dist <= d0: level = 0
             elif dist <= d1: level = 1
             elif dist <= d2: level = 2
@@ -210,10 +212,10 @@ class TOT_OT_GeoLODUpdate(bpy.types.Operator):
                 mod = obj.modifiers.get(DECIMATE_MOD_NAME)
                 if mod:
                     target_ratio = 1.0 - factor * (1.0 - strength)
-                    if mod.ratio != target_ratio:
+                    # 只有值真的变了才操作，节省资源
+                    if abs(mod.ratio - target_ratio) > 0.0001:
                         mod.ratio = target_ratio
-                        # [核心修复 1] 标记物体需要更新
-                        obj.update_tag()
+                        obj.update_tag() # 标记数据脏
                         updated += 1
             
             elif method == 'GNODES':
@@ -221,19 +223,24 @@ class TOT_OT_GeoLODUpdate(bpy.types.Operator):
                 if mod and gn_identifier:
                     final_value = factor * strength
                     try:
-                        # 仅当值确实改变时才更新，节省性能
-                        if mod[gn_identifier] != final_value:
+                        current_val = mod.get(gn_identifier, -1.0)
+                        if abs(current_val - final_value) > 0.0001:
                             mod[gn_identifier] = final_value
-                            # [核心修复 2] 标记物体数据层需要更新
-                            # refresh={'DATA'} 告诉 Blender 几何数据变了
-                            obj.update_tag(refresh={'DATA'})
+                            obj.update_tag(refresh={'DATA'}) # 标记几何脏
                             updated += 1
-                    except Exception as e:
+                    except:
                         pass
         
-        #  强制视口刷新
-        # 这确保了在一帧内所有的 update_tag 都能被立即渲染出来
+
+        # 1. 强制依赖图计算 (Data Level)
         context.view_layer.update()
+
+        # 2. 强制窗口重绘 (UI/Pixel Level)
+        # 遍历所有窗口的所有区域，找到 3D 视图并强制重绘
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == 'VIEW_3D':
+                    area.tag_redraw()
 
         self.report({'INFO'}, f"Updated {updated} objects (Strength: {strength:.2f}).")
         return {'FINISHED'}
