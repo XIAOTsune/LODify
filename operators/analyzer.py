@@ -1,5 +1,6 @@
 import bpy
 from .. import utils
+import webbrowser
 
 class TOT_OT_CollectionAnalyzer(bpy.types.Operator):
     """根据顶点数标记集合颜色并显示百分比"""
@@ -148,9 +149,53 @@ class TOT_OT_CleanViewAnalyzer(bpy.types.Operator):
         scn.AA_Toggle = False
         return {'FINISHED'}
 
-classes = (TOT_OT_CollectionAnalyzer, TOT_OT_CleanColors, TOT_OT_ViewAnalyzer, TOT_OT_CleanViewAnalyzer)
+class TOT_OT_OpenWebsite(bpy.types.Operator):
+    """访问作者主页 / 教程"""
+    bl_idname = "tot.open_website"
+    bl_label = "Open Website"
+    
+    def execute(self, context):
+        # 从 __init__ 导入全局变量
+        # 注意：使用相对导入获取包层级的变量
+        from .. import ADDON_WEBSITE_URL
+        
+        if ADDON_WEBSITE_URL:
+            webbrowser.open(ADDON_WEBSITE_URL)
+            self.report({'INFO'}, f"Opening: {ADDON_WEBSITE_URL}")
+        else:
+            self.report({'WARNING'}, "No website URL configured.")
+            
+        return {'FINISHED'}
+
+
+classes = (
+    TOT_OT_CollectionAnalyzer,
+    TOT_OT_CleanColors, 
+    TOT_OT_ViewAnalyzer,
+    TOT_OT_CleanViewAnalyzer,
+    TOT_OT_OpenWebsite,
+        )
+
 def register():
     for cls in classes: bpy.utils.register_class(cls)
 
 def unregister():
     for cls in reversed(classes): bpy.utils.unregister_class(cls)
+
+
+    """访问作者主页 / 教程"""
+    bl_idname = "tot.open_website"
+    bl_label = "Open Website"
+    
+    def execute(self, context):
+        # 从 __init__ 导入全局变量
+        # 注意：使用相对导入获取包层级的变量
+        from .. import ADDON_WEBSITE_URL
+        
+        if ADDON_WEBSITE_URL:
+            webbrowser.open(ADDON_WEBSITE_URL)
+            self.report({'INFO'}, f"Opening: {ADDON_WEBSITE_URL}")
+        else:
+            self.report({'WARNING'}, "No website URL configured.")
+            
+        return {'FINISHED'}

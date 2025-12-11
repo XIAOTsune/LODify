@@ -13,6 +13,15 @@ class TOT_ImageItem(bpy.types.PropertyGroup):
 
 # --- 主属性组 ---
 class TOT_Props(bpy.types.PropertyGroup):
+    language: EnumProperty(
+        name="Language",
+        description="Switch Interface Language",
+        items=[
+            ('EN', "EN", "English"),
+            ('CN', "中", "中文")
+        ],
+        default='CN'
+    )
     # ==========================================================
     # 1. 全局开关与分析器
     # ==========================================================

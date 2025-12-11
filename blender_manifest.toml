@@ -16,7 +16,7 @@ license = ["GPL-3.0-or-later"]
 copyright = ["2024 XIAOT"]
 
 # 网站链接 (可选，留空也可以，但格式要对)
-website = "https://www.blender.org"
+website = "https://space.bilibili.com/23411160"
 
 # --- 【注意】Tags 必须是官方允许列表中的词 ---
 # 常用允许值: "Modeling", "Pipeline", "Render", "User Interface"
