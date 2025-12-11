@@ -347,35 +347,46 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         if not base_path:
             self.report({'ERROR'}, "Save file first!")
             return {'CANCELLED'}
+        
+        # --- [1. 获取用户设定的下限 (Floor)] ---
+        # 你的意图：这个选项现在代表“最低允许的分辨率”
+        if scn.resize_size == 'c':
+            min_user_floor = scn.custom_resize_size
+        else:
+            try:
+                min_user_floor = int(scn.resize_size)
+            except:
+                min_user_floor = 64 # 默认兜底值
+        # -------------------------------------
 
-        # 1. 准备输出目录
+        # 准备输出目录
         folder_name = "textures_camera_optimized"
         output_dir = os.path.join(base_path, folder_name)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        # 2. 建立 [图片 -> 最大所需像素] 的映射表
-        # 默认给一个极小值 (比如 32px)，如果没有物体用到它，就保持极小或者不处理
         image_res_map = {} 
         
-        # 获取场景中所有 Mesh 物体
         mesh_objs = [o for o in context.scene.objects if o.type == 'MESH' and not o.hide_render]
         
-        self.report({'INFO'}, f"Analyzing {len(mesh_objs)} objects from Camera view...")
+        self.report({'INFO'}, f"Analyzing {len(mesh_objs)} objects (Min Floor: {min_user_floor}px)...")
         
         for obj in mesh_objs:
-            # A. 计算该物体在屏幕上的像素大小
+            # A. 计算屏幕占比
             px_size, visible = utils.calculate_screen_coverage(context.scene, obj, cam)
             
-            if not visible:
-                continue # 如果不可见，这个物体对贴图精度无贡献
+            if not visible: continue 
             
-            # 向上取整到最近的 POT (Power of Two: 128, 256, 512...) 
-            # 这是一个优化习惯，显卡喜欢 2 的幂次方
-            # 简单算法：当前像素 * 质量系数 (比如 1.2 倍以防模糊)
-            target_res = px_size * 1.2 
+            # 基础算法：计算出的理想分辨率
+            calculated_res = px_size * 1.2 
             
-            # B. 找到物体引用的所有贴图
+            # --- [2. 核心修改：下限保护] ---
+            # 无论物体多远，都不允许低于用户设定的 min_user_floor
+            # max(算出来的, 用户设定的底线)
+            target_res = max(calculated_res, min_user_floor)
+            # -----------------------------
+            
+            # B. 找到物体引用的贴图并更新最大需求
             for slot in obj.material_slots:
                 if slot.material and slot.material.use_nodes:
                     for node in slot.material.node_tree.nodes:
@@ -383,23 +394,25 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
                             img = node.image
                             if img.source in {'VIEWER', 'GENERATED'}: continue
                             
-                            # C. 记录最大需求
-                            # 如果这张图之前被别的物体算过，取最大值
                             current_max = image_res_map.get(img, 0)
+                            # 竞争逻辑：如果新的需求比之前的记录更大，就更新
                             if target_res > current_max:
                                 image_res_map[img] = target_res
 
-        # 3. 开始批量处理图片
+        # 3. 批量生成图片
         processed_count = 0
         
-        # 能够接受的最小/最大尺寸
-        MIN_SIZE = 64
-        MAX_SIZE = 4096 
-
         for img, req_px in image_res_map.items():
-            # 钳制数值到 POT (简化版，直接钳制数值)
-            # 比如算出 900px，我们要存成 1024px
-            # 简单的阶梯：
+            
+            # 归档到最近的 POT (2的幂次方)
+            # 因为前面已经用了 max(req, floor)，所以这里 req_px 一定 >= min_user_floor
+            
+            final_size = 4 
+            
+            if req_px <= 4: final_size = 4
+            elif req_px <= 8: final_size = 8
+            if req_px <= 16: final_size = 16
+            elif req_px <= 32: final_size = 32
             if req_px <= 64: final_size = 64
             elif req_px <= 128: final_size = 128
             elif req_px <= 256: final_size = 256
@@ -408,36 +421,39 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
             elif req_px <= 2048: final_size = 2048
             else: final_size = 4096
             
-            # 如果原图本身就很小，不要放大它
+            # --- [3. 上限控制：不应该超过原图物理尺寸] ---
+            # 即使下限设了 2048，如果原图只有 512，强制放大没有意义，只会增加体积
+            # 所以我们要把 final_size 钳制在原图尺寸内
             orig_w = img.size[0]
-            if final_size > orig_w:
-                final_size = orig_w
+            orig_h = img.size[1]
+            # 取原图长宽的最大值作为物理上限
+            max_orig_dim = max(orig_w, orig_h)
+            
+            if final_size > max_orig_dim:
+                final_size = max_orig_dim
+            # -------------------------------------------
+            if final_size < 4: final_size = 4
 
-            # --- 下面是复用之前的 Resize 逻辑 ---
             try:
-                # 记录原始路径
                 if "tot_original_path" not in img:
                     img["tot_original_path"] = img.filepath
 
-                # 构造文件名：这里不再加 _1024px 后缀，因为每张图后缀不一样会很乱
-                # 或者我们可以加后缀，但在 SwitchResolution 时要能够识别
-                # 为了保持 Switcher 兼容性，建议保留后缀逻辑，或者统一不加后缀？
-                # 方案：加上后缀，方便人类阅读。Switch 逻辑需要微调。
-                
                 original_filepath = img.filepath_from_user()
                 file_name = os.path.basename(original_filepath)
                 if not file_name: file_name = f"{img.name}.png"
                 name_part, ext_part = os.path.splitext(file_name)
                 if not ext_part: ext_part = ".png"
 
+                # 文件名带上分辨率后缀
                 new_file_name = f"{name_part}_{final_size}px{ext_part}"
                 new_full_path = os.path.join(output_dir, new_file_name)
 
-                # 内存缩放 & 保存
+                # 生成与保存
+                # 只有当最终尺寸确实小于原图时，或者为了生成文件，我们才执行 scale
+                # 这里为了统一管理，我们执行生成
                 img.scale(final_size, final_size)
                 img.save_render(filepath=new_full_path)
                 
-                # 重连
                 img.filepath = new_full_path
                 img.reload()
                 
@@ -446,11 +462,10 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
             except Exception as e:
                 print(f"Error optimizing {img.name}: {e}")
 
-        # 4. 刷新列表
         bpy.ops.tot.updateimagelist()
         context.area.tag_redraw()
         
-        self.report({'INFO'}, f"Camera Optimized: Generated {processed_count} textures.")
+        self.report({'INFO'}, f"Camera Optimized: {processed_count} textures (Min Floor: {min_user_floor}px).")
         return {'FINISHED'}
 
 classes = (
