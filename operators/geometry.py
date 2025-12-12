@@ -363,8 +363,10 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
         self._processed = 0
         self._updated_count = 0
         self.method = method
-        self.min_protection = scn.geo_lod_min_ratio
         
+        # --- 获取最新的全局参数 ---
+        self.min_protection = scn.geo_lod_min_ratio
+        self.min_faces = scn.geo_lod_min_faces
         self.angle_threshold = scn.geo_lod_angle_threshold
         self.max_dist = scn.geo_lod_max_dist
         
@@ -374,8 +376,11 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
         
         if method == 'GNODES':
             group = bpy.data.node_groups.get("TOT_GEO_LOD_Advanced")
+            # [修复点] 这里直接调用当前文件定义的函数，不需要 utils. 前缀
             self.gn_id_factor = get_input_identifier(group, GN_INPUT_FACTOR)
             self.gn_id_angle = get_input_identifier(group, GN_INPUT_ANGLE)
+            # 尝试获取 Max_Merge_Dist 的接口 ID
+            self.gn_id_dist = get_input_identifier(group, GN_INPUT_MAX_DIST)
 
         context.window_manager.progress_begin(0, self._total_tasks)
         self._timer = context.window_manager.event_timer_add(0.01, window=context.window) 
@@ -386,44 +391,58 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
     def process_object(self, context, obj):
         """
         处理单个物体的 LOD 更新逻辑：
-        1. 计算屏幕占比 (Screen Ratio)
-        2. 转换为阶梯化的 LOD Factor
-        3. 将参数写入修改器 (Decimate 或 GeometryNodes)
+        1. 检查面数保护 (Min Faces) -> 如果受保护，强制 Factor=1.0
+        2. 计算屏幕占比 (Screen Ratio)
+        3. 写入修改器 (Decimate 或 GN)
         """
-        # ===========================================================
-        # 1. 计算原始屏幕占比 (Raw Screen Ratio)
-        # ===========================================================
-        if hasattr(utils, 'get_normalized_screen_ratio'):
-            raw_ratio = utils.get_normalized_screen_ratio(context.scene, obj, self.cam)
-        else:
-            raw_ratio = 0.5 # 默认兜底值
         
         # ===========================================================
-        # 2. 阶梯化处理 (Stepping)
+        # 1. 面数保护检查 (Min Faces Protection)
         # ===========================================================
-        if hasattr(utils, 'get_stepped_lod_factor'):
-            target_factor = utils.get_stepped_lod_factor(raw_ratio, self.min_protection)
-        else:
+        # 逻辑：如果当前物体面数 < 设置的最小面数，强制不减面 (target_factor = 1.0)
+        # 这让用户在面板调整 Min Faces 后点击更新，能立即“救回”那些被误杀的小物体
+        is_protected_by_faces = False
+        if hasattr(obj.data, "polygons"):
+            # 注意：对于面数极多的物体，len() 可能会微耗时，但在异步 Modal 里通常可接受
+            if len(obj.data.polygons) < self.min_faces:
+                is_protected_by_faces = True
+
+        # ===========================================================
+        # 2. 计算目标强度 (Target Factor)
+        # ===========================================================
+        if is_protected_by_faces:
+            # 如果触发面数保护，直接设为 1.0 (保留原样)
             target_factor = 1.0
+        else:
+            # 否则，正常进行屏幕占比计算
+            if hasattr(utils, 'get_normalized_screen_ratio'):
+                raw_ratio = utils.get_normalized_screen_ratio(context.scene, obj, self.cam)
+            else:
+                raw_ratio = 0.5 
+            
+            if hasattr(utils, 'get_stepped_lod_factor'):
+                target_factor = utils.get_stepped_lod_factor(raw_ratio, self.min_protection)
+            else:
+                target_factor = 1.0
 
         # ===========================================================
         # 3. 应用到修改器 (Apply Modifiers)
         # ===========================================================
         
-        # 定义极小的容差值 (Epsilon)，只要变化超过此值即更新
-        # 对于手动点击更新，我们需要它非常灵敏
-        EPSILON_FACTOR = 0.001  # 0.1% 的变化即更新
-        EPSILON_ANGLE = 0.001   # 约 0.05 度
-        EPSILON_DIST = 0.0001   # 0.1 毫米
+        # 定义极小的容差值 (Epsilon)，保证微调参数能立即生效
+        EPSILON_FACTOR = 0.001 
+        EPSILON_ANGLE = 0.001   
+        EPSILON_DIST = 0.0001   
 
         # --- 模式 A: 传统减面修改器 (Decimate) ---
         if self.method == 'DECIMATE':
             mod = obj.modifiers.get(DECIMATE_MOD_NAME)
-            # [修改] 阈值从 0.05 降低到 0.001
-            if mod and abs(mod.ratio - target_factor) > EPSILON_FACTOR:
-                mod.ratio = target_factor
-                obj.update_tag() 
-                self._updated_count += 1
+            if mod:
+                # 如果受面数保护，Ratio 恢复为 1.0；否则应用计算出的 Ratio
+                if abs(mod.ratio - target_factor) > EPSILON_FACTOR:
+                    mod.ratio = target_factor
+                    obj.update_tag() 
+                    self._updated_count += 1
             
         # --- 模式 B: 几何节点 (Geometry Nodes) ---
         elif self.method == 'GNODES':
@@ -432,99 +451,36 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
                 changed = False
                 
                 # 3.1 更新强度 (LOD_Factor)
-                # ---------------------------------------------------
                 if self.gn_id_factor:
                     try:
                         curr = mod.get(self.gn_id_factor, 1.0)
-                        # [修改] 阈值从 0.05 降低到 0.001
                         if abs(curr - target_factor) > EPSILON_FACTOR:
                             mod[self.gn_id_factor] = target_factor
                             changed = True
                     except: pass
                 
                 # 3.2 更新角度阈值 (Angle_Threshold)
-                # ---------------------------------------------------
                 if self.gn_id_angle:
                     try:
                         curr_angle = mod.get(self.gn_id_angle, 1.5)
-                        # [修改] 阈值从 0.01 降低到 0.001
+                        # 检查当前值与全局设置的差异
                         if abs(curr_angle - self.angle_threshold) > EPSILON_ANGLE:
                             mod[self.gn_id_angle] = self.angle_threshold
                             changed = True
                     except: pass
 
                 # 3.3 更新最大合并距离 (Max_Merge_Dist)
-                # ---------------------------------------------------
                 if hasattr(self, 'gn_id_dist') and self.gn_id_dist:
                     try:
                         curr_dist = mod.get(self.gn_id_dist, 0.5)
                         target_dist = getattr(self, 'max_dist', 0.5) 
                         
-                        # [修改] 阈值从 0.001 降低到 0.0001
                         if abs(curr_dist - target_dist) > EPSILON_DIST:
                             mod[self.gn_id_dist] = target_dist
                             changed = True
                     except: pass
                 
                 # 4. 提交更改
-                # ---------------------------------------------------
-                if changed:
-                    obj.update_tag() 
-                    self._updated_count += 1
-                    
-        # --- 模式 B: 几何节点 (Geometry Nodes) ---
-        elif self.method == 'GNODES':
-            mod = obj.modifiers.get(GEO_NODES_MOD_NAME)
-            if mod:
-                # 标记是否有变化，如果有任何一个参数变了，最后统一刷新
-                changed = False
-                
-                # 3.1 更新强度 (LOD_Factor)
-                # ---------------------------------------------------
-                # 控制随机删面的比例 (0~1)
-                if self.gn_id_factor:
-                    try:
-                        curr = mod.get(self.gn_id_factor, 1.0)
-                        # 同样使用 0.05 的死区阈值，避免频繁闪烁
-                        if abs(curr - target_factor) > 0.05:
-                            mod[self.gn_id_factor] = target_factor
-                            changed = True
-                    except: pass
-                
-                # 3.2 更新角度阈值 (Angle_Threshold)
-                # ---------------------------------------------------
-                # 控制平坦区域的判断标准 (从面板读取的全局设置)
-                if self.gn_id_angle:
-                    try:
-                        curr_angle = mod.get(self.gn_id_angle, 1.5)
-                        # 检查当前值与全局设置的差异
-                        if abs(curr_angle - self.angle_threshold) > 0.01:
-                            mod[self.gn_id_angle] = self.angle_threshold
-                            changed = True
-                    except: pass
-
-                # 3.3 [新增] 更新最大合并距离 (Max_Merge_Dist)
-                # ---------------------------------------------------
-                # 控制极远距离下的塌陷力度 (从面板读取的全局设置)
-                # 只有当 invoke 中成功获取到 id 且属性存在时才执行
-                if hasattr(self, 'gn_id_dist') and self.gn_id_dist:
-                    try:
-                        # 获取当前物体上存储的距离值 (默认0.5)
-                        curr_dist = mod.get(self.gn_id_dist, 0.5)
-                        
-                        # 获取目标值 (self.max_dist 在 invoke 中从 scn.geo_lod_max_dist 读取)
-                        # 使用 getattr 防止旧版本 invoke 没有定义 max_dist 导致报错
-                        target_dist = getattr(self, 'max_dist', 0.5) 
-                        
-                        if abs(curr_dist - target_dist) > 0.001:
-                            mod[self.gn_id_dist] = target_dist
-                            changed = True
-                    except: pass
-                
-                # 4. 提交更改
-                # ---------------------------------------------------
-                # [核心优化] 只有数值真正改变时，才强制刷新物体
-                # 避免在大场景中即使数值没变也触发 update_tag，导致不必要的性能消耗
                 if changed:
                     obj.update_tag() 
                     self._updated_count += 1

@@ -146,7 +146,7 @@ class TOT_Props(bpy.types.PropertyGroup):
         default=0.5,   # 默认 0.5m
         min=0.001,
         max=100.0,     # 给一个足够大的上限，应对巨型场景
-        description="Merge Radius at furthest distance"
+        description="极远处合并半径：距离越远，合并范围越大 (值越大减面越狠)"
     )    
 # 注册列表
 classes = (
