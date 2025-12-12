@@ -70,19 +70,13 @@ class TOT_Props(bpy.types.PropertyGroup):
     # 用于计算距离的相机
     lod_camera: PointerProperty(
         name="LOD Camera",
-        description="用于计算距离的相机，不设置则使用场景主相机",
+        description="用于计算屏幕占比的相机",
         type=bpy.types.Object,
     )
-
-    # 三个距离阈值 (定义 High / Mid / Low 区域)
-    # Zone 1 (High): 0 ~ dist_0
-    # Zone 2 (Mid):  dist_0 ~ dist_1
-    # Zone 3 (Low):  dist_1 ~ dist_2
-    # Zone 4 (Far):  > dist_2
-    lod_dist_0: FloatProperty(name="Distance L0 (High)", default=10.0, min=0.0, unit='LENGTH')
-    lod_dist_1: FloatProperty(name="Distance L1 (Mid)", default=30.0, min=0.0, unit='LENGTH')
-    lod_dist_2: FloatProperty(name="Distance L2 (Low)", default=60.0, min=0.0, unit='LENGTH')
-
+    
+    lod_dist_0: FloatProperty(name="LOD 0 Distance", default=10.0, min=0.0, description="High Detail End Distance")
+    lod_dist_1: FloatProperty(name="LOD 1 Distance", default=25.0, min=0.0, description="Mid Detail End Distance")
+    lod_dist_2: FloatProperty(name="LOD 2 Distance", default=50.0, min=0.0, description="Low Detail End Distance")
     # ==========================================================
     # 3. 维度三：视窗优化 (Viewport Optimization)
     # ==========================================================
@@ -110,19 +104,18 @@ class TOT_Props(bpy.types.PropertyGroup):
     # 4. 维度二：模型减面 (Geometry LOD)
     # ==========================================================
     geo_lod_enabled: BoolProperty(
-        name="Enable Geometry LOD",
-        description="启用基于距离的自动减面系统",
-        default=False,
-    )
-    
+            name="Enable Geometry LOD",
+            description="启用基于屏幕占比(Screen Ratio)的自动减面",
+            default=False,
+        )
     geo_lod_method: EnumProperty(
-        name="LOD Method",
-        items=[
-            ("DECIMATE", "Decimate Modifier", "使用传统 Decimate 修改器 (破坏性较小，兼容性好)"),
-            ("GNODES", "Geometry Nodes", "使用几何节点 (计算更快，功能更现代)"),
-        ],
-        default="DECIMATE",
-    )
+            name="LOD Method",
+            items=[
+                ("DECIMATE", "Decimate Modifier", "使用传统 Decimate 修改器"),
+                ("GNODES", "Geometry Nodes", "使用几何节点 (高质量)"),
+            ],
+            default="GNODES",
+        )
     
     geo_lod_min_faces: IntProperty(
         name="Min Faces", 
@@ -133,13 +126,20 @@ class TOT_Props(bpy.types.PropertyGroup):
     
     # 这个参数同时控制 Decimate 的 ratio 和 GN 的 Factor
     geo_lod_min_ratio: FloatProperty(
-        name="Max Reduction Strength", 
-        default=0.1, 
-        min=0.01, 
-        max=1.0, 
-        description="最远距离时的压缩比例 (Decimate Ratio) 或 强度因子"
+            name="Min Ratio Protection", 
+            default=0.1, 
+            min=0.01, 
+            max=1.0, 
+            description="最强减面保护：即使物体在极远处，也至少保留此比例的面数 (防止完全崩坏)"
+        )
+    # 边角阈值
+    geo_lod_angle_threshold: FloatProperty(
+        name="Sharpness Limit (Rad)",
+        default=1.5,  # 默认值设高一点 (1.5弧度 ≈ 85度)，保证大部分面都能被合并
+        min=0.0,
+        max=3.14159,
+        description="角度阈值：小于此角度的边缘被视为平坦区并允许合并。数值越大，减面越狠 (保护越少)。"
     )
-
 # 注册列表
 classes = (
     TOT_ImageItem,

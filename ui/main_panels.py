@@ -213,21 +213,30 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         scn = context.scene.tot_props
-        #相机选择
-        layout.prop(scn, "lod_camera", icon='CAMERA_DATA')
-        layout.separator()
-        
-        # 距离阈值设定 (Zones)
-        layout.label(text="Distance Zones (Meters):", icon='TRACKER')
-        row = layout.row(align=True)
-        row.prop(scn, "lod_dist_0", text="High")
-        row.prop(scn, "lod_dist_1", text="Mid")
-        row.prop(scn, "lod_dist_2", text="Low")
-        
-        layout.separator()
         
         # ==========================================================
-        # 2. 维度三：视窗优化 (Viewport Optimization)
+        # Part A: 基础设置 (相机 & 距离阈值)
+        # ==========================================================
+        layout.prop(scn, "lod_camera", icon='CAMERA_DATA')
+        
+        layout.separator()
+        
+        # 恢复距离设置 (专门供 Viewport 使用)
+        # 使用 align=True 让它们排成紧凑的一行或一列
+        col = layout.column(align=True)
+        col.label(text="LOD Distance Levels (For Viewport):", icon='DRIVER_DISTANCE')
+        
+        row = col.row(align=True)
+        row.prop(scn, "lod_dist_0", text="High <")
+        row.prop(scn, "lod_dist_1", text="Mid <")
+        row.prop(scn, "lod_dist_2", text="Low <")
+        # 超过 lod_dist_2 的即为 Far
+        
+        layout.separator()
+
+        # ==========================================================
+        # Part B: 视窗显示优化 (Viewport Optimization)
+        # 依赖上面的距离设置
         # ==========================================================
         box = layout.box()
         header = box.row()
@@ -235,38 +244,36 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
         
         if scn.view_lod_enabled:
             col = box.column(align=True)
-            # High Zone
-            r = col.row()
-            r.label(text="0m - High:")
-            r.prop(scn, "view_lod0_display", text="")
-            # Mid Zone
-            r = col.row()
-            r.label(text="Mid:")
-            r.prop(scn, "view_lod1_display", text="")
-            # Low Zone
-            r = col.row()
-            r.label(text="Low:")
-            r.prop(scn, "view_lod2_display", text="")
-            # Far Zone
-            r = col.row()
-            r.label(text="> Far:")
-            r.prop(scn, "view_lod3_display", text="")
             
-            box.prop(scn, "view_lod3_hide", text=tr("Hide Far Objects"))
+            # 使用 split 让标签和选项对齐更好看
+            def draw_lod_row(layout, label, prop_name):
+                row = layout.row(align=True)
+                row.label(text=label)
+                row.prop(scn, prop_name, text="")
             
-            # 视窗操作按钮
+            draw_lod_row(col, f"0m - {scn.lod_dist_0}m (High):", "view_lod0_display")
+            draw_lod_row(col, f"{scn.lod_dist_0}m - {scn.lod_dist_1}m (Mid):", "view_lod1_display")
+            draw_lod_row(col, f"{scn.lod_dist_1}m - {scn.lod_dist_2}m (Low):", "view_lod2_display")
+            draw_lod_row(col, f"> {scn.lod_dist_2}m (Far):", "view_lod3_display")
+            
+            col.separator()
+            col.prop(scn, "view_lod3_hide", text=tr("Hide Far Objects"))
+            
+            # 操作按钮
             r = box.row(align=True)
+            r.scale_y = 1.2
             r.operator("tot.viewport_lod_update", text=tr("Update View"), icon='FILE_REFRESH')
             r.operator("tot.viewport_lod_reset", text=tr("Reset"), icon='X')
 
         # ==========================================================
-        # 3. 维度二：模型减面 (Geometry LOD - 重构版)
+        # Part C: 模型几何优化 (Geometry LOD - Screen Coverage)
         # ==========================================================
+        layout.separator()
         box = layout.box()
         
         # 头部
         row = box.row()
-        row.label(text="Geometry LOD", icon="MOD_DECIM")
+        row.label(text="Geometry LOD (Screen Ratio)", icon="MOD_DECIM")
         row.prop(scn, "geo_lod_enabled", text=tr("Enable"), toggle=True)
         
         if scn.geo_lod_enabled:
@@ -280,35 +287,36 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
             
             # 动态显示强度标签
             if scn.geo_lod_method == 'DECIMATE':
-                # Decimate 模式：数值是“保留比例”，越小减面越多
-                col.prop(scn, "geo_lod_min_ratio", text=tr("Min Ratio (Max Reduction)"), slider=True)
+                col.prop(scn, "geo_lod_min_ratio", text=tr("Min Ratio (Safety Floor)"), slider=True)
+                col.label(text="Prevents breaking close-up details", icon='INFO')
             else:
-                # GN 模式：数值是“强度因子”，越大减面越多
-                # 复用同一个变量，但在逻辑里处理
                 col.prop(scn, "geo_lod_min_ratio", text=tr("GN Strength Factor"), slider=True)
                 col.label(text="Higher Strength = More Merging", icon='INFO')
 
-            # 3. 三大核心按钮 (Setup / Update / Reset)
+                # --- 显示角度阈值滑块 ---
+                row = col.row(align=True)
+                row.prop(scn, "geo_lod_angle_threshold", text="Edge Threshold")
+                # 加上一个帮助图标提示
+                row.label(text="", icon='EDGESEL')
+                
+                col.label(text="Higher Angle = More Merging", icon='INFO')
+
+            # 3. 三大核心按钮 (只保留这一个区域，删除原来的重复块)
             row = box.row(align=True)
             row.scale_y = 1.2
             row.operator("tot.geo_lod_setup", text=tr("Setup Modifiers"), icon="MODIFIER")
-            row.operator("tot.geo_lod_update", text=tr("Update Geometry"), icon="PLAY")
+            
+            # 使用 Async Update (防止卡顿)
+            row.operator("tot.geo_lod_update_async", text=tr("Update Geometry"), icon="PLAY")
+            
             row.operator("tot.geo_lod_reset", text=tr("Reset Geometry"), icon="FILE_REFRESH")   
-            # 4. Apply 按钮 (现在支持两种模式)
+            
+            # 4. Apply 按钮
             row = box.row()
             row.scale_y = 1.2
-            # 红色警告色提示这是破坏性操作
             row.alert = True 
             op_text = tr("Apply Decimate (Destructive)") if scn.geo_lod_method == 'DECIMATE' else tr("Apply GeoNodes (Destructive)")
             row.operator("tot.geo_lod_apply", text=op_text, icon="CHECKMARK")
-        # ==========================================================
-        # 4. 维度一：贴图管理 (Texture - 占位)
-        # ==========================================================
-        box = layout.box()
-        box.label(text=tr("Texture Optimization"), icon='TEXTURE')
-        # 这里复用之前的 Resize 逻辑，但建议未来整合进 LOD 逻辑
-        box.label(text=tr("See Image Resizer Panel below"), icon='INFO')
-
 # 5. 去除重复贴图 (Duplicate Remover)
 class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
     bl_label = "5. Clean Up & Storage"

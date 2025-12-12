@@ -59,6 +59,47 @@ def calculate_screen_coverage(scene, obj, camera):
     # 取最长边作为分辨率参考
     return max(pixel_width, pixel_height), True
 
+def get_normalized_screen_ratio(scene, obj, camera):
+    """
+    获取归一化的屏幕占比 (0.0 ~ 1.0)
+    Ratio = 物体屏幕最长边像素 / 屏幕渲染长边像素
+    """
+    pixels, visible = calculate_screen_coverage(scene, obj, camera)
+    if not visible:
+        return 0.0
+    
+    render = scene.render
+    # 取屏幕长宽的最大值作为分母
+    max_screen_res = max(render.resolution_x, render.resolution_y)
+    
+    if max_screen_res == 0: return 0.0
+    
+    return min(pixels / max_screen_res, 1.0)
+
+def get_stepped_lod_factor(raw_ratio, min_protection=0.01):
+    """
+    LOD 阶梯映射策略
+    根据设计方案将连续的 Ratio 离散化为固定的 Factor
+    """
+    target_factor = 1.0
+    
+    # 阶梯表
+    if raw_ratio > 0.8:     # 极高
+        target_factor = 1.0
+    elif raw_ratio > 0.5:   # 高
+        target_factor = 0.7
+    elif raw_ratio > 0.2:   # 中
+        target_factor = 0.4
+    elif raw_ratio > 0.05:  # 低
+        target_factor = 0.1
+    else:                   # 极低
+        target_factor = 0.01 # 或者 0.0，视情况而定
+        
+    # 应用最小保护值 (Min Ratio)
+    # 如果计算出的 target_factor 比用户设置的底限还要低，则提升至底限
+    # 但如果 target_factor 本来就是 1.0 (全屏)，则不需要降低
+    return max(target_factor, min_protection)
+
 def get_collection_vertex_count(collection):
     """递归计算集合内所有 Mesh 对象的顶点总数"""
     total_verts = 0
