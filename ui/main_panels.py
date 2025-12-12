@@ -25,7 +25,7 @@ class TOT_PT_Header(TOT_PT_MainPanel, bpy.types.Panel):
         
         # 左侧：插件标题
         # 根据语言切换标题
-        title = "Optimize Tools" if scn.language == 'EN' else "Blender 优化工具"
+        title = "LODify" if scn.language == 'EN' else "Blender 优化工具"
         row.label(text=title, icon='MODIFIER')
 
         sub = row.row()
@@ -150,7 +150,7 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         # 执行缩放
         row = layout.row()
         row.scale_y = 1.4
-        row.operator("tot.resizeimages", text=tr("Resize Selected Images"), icon='IMAGE_DATA')
+        row.operator("tot.resizeimages_async", text=tr("Resize Selected Images"), icon='IMAGE_DATA')
 
         layout.separator()
         box_cam = layout.box()

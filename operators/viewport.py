@@ -84,38 +84,32 @@ class TOT_OT_ViewportLODReset(bpy.types.Operator):
             if obj.type not in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'}:
                 continue
                 
-            # --- [核心修改] 优先尝试从快照恢复 ---
+            # --- [核心修改] 即使恢复了也不删除快照，允许反复重置 ---
             if "_tot_orig_display" in obj:
-                # 恢复显示模式 (SOLID, WIRE, etc.)
-                # 有时候保存的是 int，有时候是 str，根据 blender 版本稍微容错一下
                 try:
+                    # 总是从快照中读取状态
                     obj.display_type = obj["_tot_orig_display"]
                 except:
-                    # 万一出错，回退到 Textured
                     obj.display_type = 'TEXTURED'
                 
-                # 恢复完成，删除快照，以便下次重新Update时记录新状态
-                del obj["_tot_orig_display"]
+                # [关键改动] 注释掉删除逻辑，确保持久记忆
+                # del obj["_tot_orig_display"] 
                 restored_count += 1
             else:
-                # 如果没有快照 (比如手动操作过的物体)，默认回退到 Textured
-                obj.display_type = 'TEXTURED'
-                default_count += 1
+                # 如果从来没有记录过（即未参与过优化），才使用默认值
+                # 这里也可以选择什么都不做，保持现状
+                # obj.display_type = 'TEXTURED' 
+                pass # 建议改为 pass，防止误伤未处理的物体
             
             if "_tot_orig_hide" in obj:
-                # 恢复隐藏状态
                 obj.hide_viewport = bool(obj["_tot_orig_hide"])
-                del obj["_tot_orig_hide"]
+                # [关键改动] 注释掉删除逻辑
+                # del obj["_tot_orig_hide"]
             else:
-                # 默认显示
                 obj.hide_viewport = False
             # ---------------------------------------
         
-        msg = f"Reset: Restored {restored_count} objects to original state"
-        if default_count > 0:
-            msg += f", reset {default_count} to default."
-            
-        self.report({'INFO'}, msg)
+        self.report({'INFO'}, f"Reset Viewport: Restored {restored_count} objects.")
         return {'FINISHED'}
 
 classes = (

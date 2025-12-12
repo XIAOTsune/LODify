@@ -57,97 +57,157 @@ class TOT_OT_SelectAllImages(bpy.types.Operator):
             i.image_selected = has_unselected
         return {'FINISHED'}
 
-class TOT_OT_ResizeImages(bpy.types.Operator):
-    bl_idname = "tot.resizeimages"
-    bl_label = "Resize Images"
+class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
+    """异步缩放图片，避免界面卡死"""
+    bl_idname = "tot.resizeimages_async"  # 新的 ID
+    bl_label = "Resize Images (Async)"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
+    _timer = None
+    _queue = []
+    _processed = 0
+    _total_tasks = 0
+    
+    # 每一帧允许运行的时间 (秒)，超过则把控制权交还给界面
+    TIME_BUDGET = 0.1 
+
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            # 如果队列为空，说明处理完毕
+            if not self._queue:
+                return self.finish(context)
+            
+            start_time = time.time()
+            
+            # --- 时间片循环 ---
+            while self._queue:
+                # 取出一个任务
+                task = self._queue.pop(0)
+                
+                try:
+                    self.process_image(task)
+                except Exception as e:
+                    print(f"Resize Error: {e}")
+                
+                self._processed += 1
+                
+                # 检查时间预算：如果处理耗时超过预算，立即暂停，等待下一帧
+                if (time.time() - start_time) > self.TIME_BUDGET:
+                    break
+            
+            # 更新进度条
+            context.window_manager.progress_update(self._processed)
+            
+        return {'PASS_THROUGH'}
+
+    def invoke(self, context, event):
         scn = context.scene.tot_props
         
+        # 1. 基础检查
         base_path = bpy.path.abspath("//")
         if not base_path:
             self.report({'ERROR'}, "Please save the .blend file first!")
             return {'CANCELLED'}
 
-        # 获取目标尺寸
+        # 2. 准备输出目录 (在开始前只做一次)
         if scn.resize_size == 'c':
-            target_size = scn.custom_resize_size
+            self.target_size = scn.custom_resize_size
         else:
-            target_size = int(scn.resize_size)
+            self.target_size = int(scn.resize_size)
 
-        # --- [逻辑修改] 动态生成文件夹名称 ---
-        folder_name = f"textures_{target_size}px" 
+        folder_name = f"textures_{self.target_size}px"
         
-        # 决定最终路径
         if scn.duplicate_images and not scn.use_same_directory:
-            # 如果用户指定了自定义路径，就在自定义路径下创建 textures_1024px
-            output_dir = os.path.join(bpy.path.abspath(scn.custom_output_path), folder_name)
+            self.output_dir = os.path.join(bpy.path.abspath(scn.custom_output_path), folder_name)
         else:
-            # 默认在 blend 文件旁边的 textures_1024px
-            output_dir = os.path.join(base_path, folder_name)
+            self.output_dir = os.path.join(base_path, folder_name)
 
-        if not os.path.exists(output_dir):
+        if not os.path.exists(self.output_dir):
             try:
-                os.makedirs(output_dir)
+                os.makedirs(self.output_dir)
             except Exception as e:
                 self.report({'ERROR'}, f"Cannot create directory: {e}")
                 return {'CANCELLED'}
 
-        resized_count = 0
-        
+        # 3. 构建任务队列
+        self._queue = []
         for item in scn.image_list:
             if not item.image_selected: continue
-
+            
+            # 验证图片有效性
             img = bpy.data.images.get(item.tot_image_name)
             if not img: continue
             if img.source in {'VIEWER', 'GENERATED'}: continue
             
-            # 即使原图比目标小，为了统一管理，建议也处理，或者你可以保留这个判断
-            if img.size[0] <= target_size and img.size[1] <= target_size:
-                # continue # 如果你想跳过小图，取消注释
-                pass 
+            # 将任务数据打包存入队列
+            self._queue.append({
+                "img_name": item.tot_image_name,
+                "target_size": self.target_size
+            })
 
-            try:
-                # 0. 记录原始路径
-                if "tot_original_path" not in img:
-                    img["tot_original_path"] = img.filepath
-                # 1. 构造文件名
-                original_filepath = img.filepath_from_user()
-                file_name = os.path.basename(original_filepath)
-                if not file_name: file_name = f"{img.name}.png"
-                
-                name_part, ext_part = os.path.splitext(file_name)
-                if not ext_part: ext_part = ".png"
-                
-                # 新文件名: my_texture_1024px.jpg
-                new_file_name = f"{name_part}_{target_size}px{ext_part}"
-                new_full_path = os.path.join(output_dir, new_file_name)
-                
-                # 2. 内存缩放
-                img.scale(target_size, target_size)
-                
-                # 3. 物理保存
-                img.save_render(filepath=new_full_path)
-                
-                # 4. 重连并刷新
-                img.filepath = new_full_path
-                img.reload()
-                
-                resized_count += 1
+        if not self._queue:
+            self.report({'WARNING'}, "No images selected.")
+            return {'CANCELLED'}
 
-            except Exception as e:
-                self.report({'ERROR'}, f"Error processing {img.name}: {e}")
+        # 4. 启动模态
+        self._total_tasks = len(self._queue)
+        self._processed = 0
+        
+        context.window_manager.progress_begin(0, self._total_tasks)
+        self._timer = context.window_manager.event_timer_add(0.01, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        
+        self.report({'INFO'}, f"Starting Async Resize: {self._total_tasks} images...")
+        return {'RUNNING_MODAL'}
 
-        # 刷新列表
+    def process_image(self, task):
+        """单个图片处理逻辑 (从原同步代码迁移而来)"""
+        img = bpy.data.images.get(task["img_name"])
+        target_size = task["target_size"]
+        
+        if not img: return
+
+        # 0. 记录原始路径
+        if "tot_original_path" not in img:
+            img["tot_original_path"] = img.filepath
+
+        # 1. 构造文件名
+        original_filepath = img.filepath_from_user()
+        file_name = os.path.basename(original_filepath)
+        if not file_name: file_name = f"{img.name}.png"
+        
+        name_part, ext_part = os.path.splitext(file_name)
+        if not ext_part: ext_part = ".png"
+        
+        new_file_name = f"{name_part}_{target_size}px{ext_part}"
+        new_full_path = os.path.join(self.output_dir, new_file_name)
+        
+        # 2. 内存缩放
+        # 注意：这里我们做个检查，防止重复操作同一个已经是小图的文件
+        img.scale(target_size, target_size)
+        
+        # 3. 物理保存 (这是最耗时的步骤)
+        img.save_render(filepath=new_full_path)
+        
+        # 4. 重连并刷新
+        img.filepath = new_full_path
+        img.reload()
+
+    def finish(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
+        
+        # 刷新列表 UI
         bpy.ops.tot.updateimagelist()
         
-        # 强制刷新 UI (为了让 Clean Up 面板立马显示新文件夹)
-        context.area.tag_redraw()
-        
-        self.report({'INFO'}, f"Optimized {resized_count} textures into folder: {folder_name}")
+        # 强制刷新界面
+        for win in context.window_manager.windows:
+            for area in win.screen.areas:
+                area.tag_redraw()
+                
+        self.report({'INFO'}, f"Resize Complete! Processed {self._processed} images.")
         return {'FINISHED'}
-
+    
 class TOT_OT_ClearDuplicateImage(bpy.types.Operator):
     """清理重复贴图：将 .001, .002 结尾的图片替换为原始图片"""
     bl_idname = "tot.clearduplicateimage"
@@ -539,7 +599,7 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
 classes = (
     TOT_OT_UpdateImageList,
     TOT_OT_SelectAllImages,
-    TOT_OT_ResizeImages,
+    TOT_OT_ResizeImagesAsync,
     TOT_OT_ClearDuplicateImage,
     TOT_OT_DeleteTextureFolder,
     TOT_OT_SwitchResolution,

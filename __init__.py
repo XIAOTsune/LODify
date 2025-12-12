@@ -41,8 +41,8 @@ def load_manifest_info():
 # --- 1. 兼容 Legacy Add-on (Blender < 4.2) ---
 # 即使是 Extension 模式，保留这个也不会报错，旧版本则依赖它识别插件。
 bl_info = {
-    "name": "ToOptimize Tools (LOD Edition)",
-    "author": "Your Name",
+    "name": "LODify",
+    "author": "小T_sune",
     "version": (2, 0, 0),
     "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
