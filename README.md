@@ -1,6 +1,3 @@
-![logo](https://github.com/user-attachments/assets/e44f190c-ef06-4b8d-bd47-1165abb14d74)<div align="center">
-  
-  ![logo](https://github.com/user-attachments/assets/3b213786-498f-428b-bd65-61bc9f606932)
   
   <h1>🚀 LODify</h1>
   
@@ -69,13 +66,14 @@
 * **智能缓存**：贴图缩放过一次？第二次运行 **0秒完成**！它记得一切。
 * **时光倒流**：优化视窗显示（线框/隐藏）前，它会自动拍摄 **状态快照**。无论你折腾多少次，一键 Reset，所有物体乖乖回到你最初设置的样子。
 
-<img width="912" height="810" alt="1" src="https://github.com/user-attachments/assets/1d2fd224-30ec-4ae1-ab53-754950d93dd6" />
 
-<img width="884" height="845" alt="2" src="https://github.com/user-attachments/assets/24bd17cf-e9b0-4b8e-81ab-6145f0b2171d" />
+<img width="912" height="810" alt="1" src="https://github.com/user-attachments/assets/1d2fd224-30ec-4ae1-ab53-754950d93dd6" width="300"/>
 
-<img width="894" height="709" alt="3" src="https://github.com/user-attachments/assets/7819a88d-2074-47c2-b547-cb6a4d35212c" />
+<img width="884" height="845" alt="2" src="https://github.com/user-attachments/assets/24bd17cf-e9b0-4b8e-81ab-6145f0b2171d" width="300"/>
 
-<img width="891" height="265" alt="4" src="https://github.com/user-attachments/assets/a1fcaf6d-b58e-4fe2-9482-83b4fafa0e0b" />
+<img width="894" height="709" alt="3" src="https://github.com/user-attachments/assets/7819a88d-2074-47c2-b547-cb6a4d35212c" width="300"/>
+
+<img width="891" height="265" alt="4" src="https://github.com/user-attachments/assets/a1fcaf6d-b58e-4fe2-9482-83b4fafa0e0b" width="300"/>
 
 
 
