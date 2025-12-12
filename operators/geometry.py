@@ -10,15 +10,20 @@ from .. import utils
 DECIMATE_MOD_NAME = "TOT_LOD_DECIMATE"
 GEO_NODES_MOD_NAME = "TOT_GEO_LOD"
 GN_INPUT_FACTOR = "LOD_Factor"      # 接口1：强度
-GN_INPUT_ANGLE = "Angle_Threshold"  # 接口2：角度阈值
+GN_INPUT_ANGLE = "Angle_Threshold" 
+GN_INPUT_MAX_DIST = "Max_Merge_Dist" # 接口2：角度阈值
 
 # =============================================================================
 # Helper: 几何节点组构建
 # =============================================================================
 def ensure_lod_node_group():
     """
-    创建/更新 LOD 节点组
-    修复: Random Value 节点输出索引错误 (应该是 outputs[3] 对应 Boolean)
+    创建/更新 LOD 节点组 (Geometry Nodes)
+    功能：
+    1. 接收 LOD_Factor (0.0~1.0) 和 Angle_Threshold
+    2. 接收 Max_Merge_Dist (最大合并距离)
+    3. 根据 Factor 动态计算合并距离：离得越远(Factor越小)，合并半径越大
+    4. 保护锐利边缘，只合并平坦区域
     """
     name = "TOT_GEO_LOD_Advanced" 
     group = bpy.data.node_groups.get(name)
@@ -27,7 +32,7 @@ def ensure_lod_node_group():
         group = bpy.data.node_groups.new(name=name, type="GeometryNodeTree")
     
     # -----------------------------------------------------------
-    # 内嵌辅助函数
+    # 内嵌辅助函数：安全创建节点
     # -----------------------------------------------------------
     def safe_create_node(nodes, possible_names, label=None):
         for node_name in possible_names:
@@ -40,24 +45,37 @@ def ensure_lod_node_group():
         return None
     # -----------------------------------------------------------
 
-    # 1. 定义接口 (Interface)
+    # ===========================================================
+    # 1. 定义接口 (Interface) - 确保输入输出端口存在
+    # ===========================================================
     if hasattr(group, "interface"):
+        # 注意：这里我们只在初始化或不匹配时清理，或者简单地追加
+        # 为了代码简洁，这里假设每次重建接口，实际生产中可优化
         group.interface.clear()
         
         # [0] Geometry In
         group.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
         
-        # [1] LOD_Factor
+        # [1] LOD_Factor (0.0 = 远/低模, 1.0 = 近/高模)
         s1 = group.interface.new_socket(name=GN_INPUT_FACTOR, in_out='INPUT', socket_type='NodeSocketFloat')
         s1.min_value = 0.0
         s1.max_value = 1.0
         s1.default_value = 1.0
         
-        # [2] Angle_Threshold
+        # [2] Angle_Threshold (弧度，用于保护边缘)
         s2 = group.interface.new_socket(name=GN_INPUT_ANGLE, in_out='INPUT', socket_type='NodeSocketFloat')
         s2.min_value = 0.0
         s2.max_value = 3.14159
         s2.default_value = 1.5 
+        
+        # [3] Max_Merge_Dist (新参数：最远处的合并半径)
+        # 即使你在外部没定义常量 GN_INPUT_MAX_DIST，这里用字符串也行
+        dist_name = "Max_Merge_Dist" 
+        if "GN_INPUT_MAX_DIST" in globals(): dist_name = GN_INPUT_MAX_DIST
+            
+        s3 = group.interface.new_socket(name=dist_name, in_out='INPUT', socket_type='NodeSocketFloat')
+        s3.min_value = 0.0
+        s3.default_value = 0.5 # 默认最大合并 0.5m
         
         # [0] Geometry Out
         group.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
@@ -70,24 +88,36 @@ def ensure_lod_node_group():
     # 2. 创建节点
     # ===========================================================
     
+    # 输入输出节点
     n_in = nodes.new("NodeGroupInput")
     n_in.location = (-900, 0)
     
     n_out = nodes.new("NodeGroupOutput")
     n_out.location = (600, 0)
 
-    # [Merge By Distance]
+    # [Merge By Distance] - 核心减面节点
     n_merge = safe_create_node(
         nodes, 
         ["GeometryNodeMergeByDistance", "GeometryNodeMeshMergeByDistance"], 
         label="Merge by Distance"
     )
     if not n_merge: raise RuntimeError("Missing Merge Node")
-    
-    n_merge.inputs["Distance"].default_value = 0.1
     n_merge.location = (300, 0)
+    
+    # [Map Range] - 动态距离控制核心
+    # 逻辑：将 LOD_Factor (0~1) 映射为 Distance (Max~Min)
+    # 当 Factor=1 (近景) -> Distance=0 (不合并)
+    # 当 Factor=0 (远景) -> Distance=Max_Merge_Dist (强合并)
+    n_map_dist = nodes.new("ShaderNodeMapRange") 
+    n_map_dist.label = "Dynamic Distance"
+    n_map_dist.location = (50, -250)
+    
+    n_map_dist.inputs['From Min'].default_value = 0.0   # Factor 0 (远)
+    n_map_dist.inputs['From Max'].default_value = 1.0   # Factor 1 (近)
+    # To Min 将由外部输入的 Max_Dist 控制
+    n_map_dist.inputs['To Max'].default_value = 0.0001  # 近处几乎不合并
 
-    # [Edge Angle]
+    # [Edge Angle] - 边缘检测
     n_edge_angle = safe_create_node(
         nodes, 
         [
@@ -99,75 +129,103 @@ def ensure_lod_node_group():
         label="Edge Angle"
     )
 
+    # ===========================================================
+    # 3. 连线逻辑
+    # ===========================================================
+
     if n_edge_angle:
+        # --- 如果版本支持 Edge Angle (高级模式) ---
         n_edge_angle.location = (-600, 250)
 
-        # [Compare] Is Flat?
+        # [Compare] Is Flat? (判断当前边是否平坦)
         n_is_flat = nodes.new("FunctionNodeCompare")
         n_is_flat.data_type = 'FLOAT'
         n_is_flat.operation = 'LESS_THAN'
         n_is_flat.label = "Is Flat?"
         n_is_flat.location = (-350, 250)
 
-        # [Math] 1.0 - LOD
+        # [Math] 1.0 - LOD (反转 Factor 用于随机概率)
         n_invert = nodes.new("ShaderNodeMath")
         n_invert.operation = 'SUBTRACT'
         n_invert.label = "1.0 - LOD"
         n_invert.inputs[0].default_value = 1.0
         n_invert.location = (-600, -150)
 
-        # [Random]
+        # [Random] 随机筛选点
         n_random = nodes.new("FunctionNodeRandomValue")
         n_random.data_type = 'BOOLEAN'
         n_random.label = "Random Cull"
         n_random.location = (-350, -150)
 
-        # [Boolean And]
+        # [Boolean And] 综合条件：既要平坦，又要命中随机概率
         n_and = nodes.new("FunctionNodeBooleanMath")
         n_and.operation = 'AND'
         n_and.label = "Filter"
         n_and.location = (-100, 100)
 
-        # ===========================================================
-        # 3. 连线
-        # ===========================================================
-        
-        # A. Edge Angle -> Compare A
+        # --- 连线 A: 选点逻辑 (Selection) ---
+        # 1. 边缘角度 < 阈值 ?
         links.new(n_edge_angle.outputs[0], n_is_flat.inputs[0])
+        links.new(n_in.outputs[2], n_is_flat.inputs[1]) # Input[2] is Angle_Threshold
 
-        # B. Input Angle_Threshold -> Compare B
-        links.new(n_in.outputs[2], n_is_flat.inputs[1])
-
-        # C. Input LOD_Factor -> Invert Input[1]
-        links.new(n_in.outputs[1], n_invert.inputs[1])
-
-        # D. Invert -> Random Probability
+        # 2. 随机概率 = 1 - LOD
+        links.new(n_in.outputs[1], n_invert.inputs[1])  # Input[1] is LOD_Factor
         links.new(n_invert.outputs[0], n_random.inputs["Probability"])
 
-        # E. Compare + Random -> And
+        # 3. 组合条件
         links.new(n_is_flat.outputs[0], n_and.inputs[0])
-        
-        # 【核心修复】：Random Value 的布尔输出是 outputs[3]，不是 [0]
-        # outputs[0]=Float, [1]=Vector, [2]=Int, [3]=Boolean
-        links.new(n_random.outputs[3], n_and.inputs[1])
+        links.new(n_random.outputs[3], n_and.inputs[1]) # Random Boolean Output is index 3
 
-        # F. And -> Merge Selection
+        # 4. 连入 Merge Selection
         try:
             target_socket = n_merge.inputs.get("Selection") or n_merge.inputs[1]
             links.new(n_and.outputs[0], target_socket)
         except: pass
+
+        # --- 连线 B: 动态距离逻辑 (Distance) ---
+        # 1. Input[1] (Factor) -> Map Range Value
+        links.new(n_in.outputs[1], n_map_dist.inputs['Value'])
         
+        # 2. Input[3] (Max_Dist) -> Map Range 'To Min' (对应 Factor 0 也就是最远处的距离)
+        # 注意：这里假设输入顺序是 [Geo, Factor, Angle, MaxDist] -> Index 3
+        links.new(n_in.outputs[3], n_map_dist.inputs['To Min'])
+        
+        # 3. Map Range Result -> Merge Distance
+        links.new(n_map_dist.outputs['Result'], n_merge.inputs['Distance'])
+
     else:
-        # 降级模式
+        # --- 降级模式 (Fallback) ---
+        # 注意缩进：这里的 else 是对应最外层的 if n_edge_angle
         print("[TOT] No Edge Angle node found. Fallback mode.")
+        
+        # 即使在降级模式，我们也尝试连接动态距离，这样至少能在不考虑边缘的情况下大幅减面
+        try:
+             # Input[1] Factor -> Map Range
+             links.new(n_in.outputs[1], n_map_dist.inputs['Value'])
+             # Input[3] MaxDist -> Map Range To Min
+             links.new(n_in.outputs[3], n_map_dist.inputs['To Min'])
+             # Map Range -> Merge Distance
+             links.new(n_map_dist.outputs['Result'], n_merge.inputs['Distance'])
+        except:
+             pass
+             
+        # 只有几何流连接，不连接 Selection（全选）
         links.new(n_in.outputs[0], n_merge.inputs[0]) 
 
-    # 主几何流
+    # ===========================================================
+    # 4. 主几何流连线 (Common)
+    # ===========================================================
     in_geo = n_in.outputs[0]
     out_geo = n_out.inputs[0]
     merge_geo_in = n_merge.inputs.get("Geometry") or n_merge.inputs[0]
     merge_geo_out = n_merge.outputs.get("Geometry") or n_merge.outputs[0]
 
+    # 注意：如果上面连了，这里重复连没关系，Blender 会覆盖
+    # 但在高级模式下，Selection 已经筛选了点，这里只需连 Geometry
+    if not n_edge_angle:
+        # 降级模式下直接连
+        pass 
+    
     links.new(in_geo, merge_geo_in)
     links.new(merge_geo_out, out_geo)
 
@@ -244,6 +302,10 @@ class TOT_OT_GeoLODSetup(bpy.types.Operator):
                 gn_id_angle = get_input_identifier(lod_group, GN_INPUT_ANGLE)
                 if gn_id_angle:
                     mod[gn_id_angle] = scn.geo_lod_angle_threshold
+                
+                gn_id_dist = get_input_identifier(lod_group, GN_INPUT_MAX_DIST)
+                if gn_id_dist:
+                     mod[gn_id_dist] = scn.geo_lod_max_dist # 从面板读取值
 
         self.report({'INFO'}, f"Setup complete: {created} modifiers updated.")
         return {'FINISHED'}
@@ -304,9 +366,11 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
         self.min_protection = scn.geo_lod_min_ratio
         
         self.angle_threshold = scn.geo_lod_angle_threshold
+        self.max_dist = scn.geo_lod_max_dist
         
         self.gn_id_factor = None
         self.gn_id_angle = None
+        self.gn_id_dist = None
         
         if method == 'GNODES':
             group = bpy.data.node_groups.get("TOT_GEO_LOD_Advanced")
@@ -320,52 +384,96 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def process_object(self, context, obj):
-        # 1. 计算 Ratio (略，调用 utils)
+        """
+        处理单个物体的 LOD 更新逻辑：
+        1. 计算屏幕占比 (Screen Ratio)
+        2. 转换为阶梯化的 LOD Factor
+        3. 将参数写入修改器 (Decimate 或 GeometryNodes)
+        """
+        # ===========================================================
+        # 1. 计算原始屏幕占比 (Raw Screen Ratio)
+        # ===========================================================
         if hasattr(utils, 'get_normalized_screen_ratio'):
             raw_ratio = utils.get_normalized_screen_ratio(context.scene, obj, self.cam)
         else:
-            raw_ratio = 0.5 
+            raw_ratio = 0.5 # 默认兜底值，防止 utils 未加载报错
         
-        # 2. Stepping
+        # ===========================================================
+        # 2. 阶梯化处理 (Stepping)
+        # ===========================================================
+        # 为了防止数值频繁微变导致 Blender 每帧都刷新几何体 (引起卡顿)
+        # 我们只在 Ratio 跨越特定台阶时才改变 Factor
         if hasattr(utils, 'get_stepped_lod_factor'):
             target_factor = utils.get_stepped_lod_factor(raw_ratio, self.min_protection)
         else:
             target_factor = 1.0
 
-        # 3. Apply
+        # ===========================================================
+        # 3. 应用到修改器 (Apply Modifiers)
+        # ===========================================================
+        
+        # --- 模式 A: 传统减面修改器 (Decimate) ---
         if self.method == 'DECIMATE':
             mod = obj.modifiers.get(DECIMATE_MOD_NAME)
+            # 只有当新旧值的差超过 0.05 时才写入，减少无效更新
             if mod and abs(mod.ratio - target_factor) > 0.05:
                 mod.ratio = target_factor
-                obj.update_tag() # [修复1] 强制通知 Blender 这个物体数据变了
+                obj.update_tag() # [重要] 强制通知 Blender 这个物体数据变了，需要重绘
                 self._updated_count += 1
                     
+        # --- 模式 B: 几何节点 (Geometry Nodes) ---
         elif self.method == 'GNODES':
             mod = obj.modifiers.get(GEO_NODES_MOD_NAME)
             if mod:
-                # 标记是否有变化
+                # 标记是否有变化，如果有任何一个参数变了，最后统一刷新
                 changed = False
                 
-                # 更新强度 (LOD_Factor)
+                # 3.1 更新强度 (LOD_Factor)
+                # ---------------------------------------------------
+                # 控制随机删面的比例 (0~1)
                 if self.gn_id_factor:
                     try:
                         curr = mod.get(self.gn_id_factor, 1.0)
+                        # 同样使用 0.05 的死区阈值，避免频繁闪烁
                         if abs(curr - target_factor) > 0.05:
                             mod[self.gn_id_factor] = target_factor
                             changed = True
                     except: pass
                 
-                # 更新角度阈值 (Angle_Threshold)
+                # 3.2 更新角度阈值 (Angle_Threshold)
+                # ---------------------------------------------------
+                # 控制平坦区域的判断标准 (从面板读取的全局设置)
                 if self.gn_id_angle:
                     try:
-                        # 检查当前值，避免重复写入
                         curr_angle = mod.get(self.gn_id_angle, 1.5)
+                        # 检查当前值与全局设置的差异
                         if abs(curr_angle - self.angle_threshold) > 0.01:
                             mod[self.gn_id_angle] = self.angle_threshold
                             changed = True
                     except: pass
+
+                # 3.3 [新增] 更新最大合并距离 (Max_Merge_Dist)
+                # ---------------------------------------------------
+                # 控制极远距离下的塌陷力度 (从面板读取的全局设置)
+                # 只有当 invoke 中成功获取到 id 且属性存在时才执行
+                if hasattr(self, 'gn_id_dist') and self.gn_id_dist:
+                    try:
+                        # 获取当前物体上存储的距离值 (默认0.5)
+                        curr_dist = mod.get(self.gn_id_dist, 0.5)
+                        
+                        # 获取目标值 (self.max_dist 在 invoke 中从 scn.geo_lod_max_dist 读取)
+                        # 使用 getattr 防止旧版本 invoke 没有定义 max_dist 导致报错
+                        target_dist = getattr(self, 'max_dist', 0.5) 
+                        
+                        if abs(curr_dist - target_dist) > 0.001:
+                            mod[self.gn_id_dist] = target_dist
+                            changed = True
+                    except: pass
                 
-                # [修复1] 只有数值真正改变时，才强制刷新物体
+                # 4. 提交更改
+                # ---------------------------------------------------
+                # [核心优化] 只有数值真正改变时，才强制刷新物体
+                # 避免在大场景中即使数值没变也触发 update_tag，导致不必要的性能消耗
                 if changed:
                     obj.update_tag() 
                     self._updated_count += 1

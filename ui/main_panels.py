@@ -224,12 +224,12 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
         # 恢复距离设置 (专门供 Viewport 使用)
         # 使用 align=True 让它们排成紧凑的一行或一列
         col = layout.column(align=True)
-        col.label(text="LOD Distance Levels (For Viewport):", icon='DRIVER_DISTANCE')
+        col.label(text=tr("LOD Distance Levels (For Viewport):"), icon='DRIVER_DISTANCE')
         
         row = col.row(align=True)
-        row.prop(scn, "lod_dist_0", text="High <")
-        row.prop(scn, "lod_dist_1", text="Mid <")
-        row.prop(scn, "lod_dist_2", text="Low <")
+        row.prop(scn, "lod_dist_0", text=tr("High <"))
+        row.prop(scn, "lod_dist_1", text=tr("Mid <"))
+        row.prop(scn, "lod_dist_2", text=tr("Low <"))
         # 超过 lod_dist_2 的即为 Far
         
         layout.separator()
@@ -273,7 +273,7 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
         
         # 头部
         row = box.row()
-        row.label(text="Geometry LOD (Screen Ratio)", icon="MOD_DECIM")
+        row.label(text=tr("Geometry LOD (Screen Ratio)"), icon="MOD_DECIM")
         row.prop(scn, "geo_lod_enabled", text=tr("Enable"), toggle=True)
         
         if scn.geo_lod_enabled:
@@ -287,19 +287,22 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
             
             # 动态显示强度标签
             if scn.geo_lod_method == 'DECIMATE':
+                # 注意：i18n字典里要加上对应的key
                 col.prop(scn, "geo_lod_min_ratio", text=tr("Min Ratio (Safety Floor)"), slider=True)
-                col.label(text="Prevents breaking close-up details", icon='INFO')
+                col.label(text=tr("Prevents breaking close-up details"), icon='INFO')
             else:
                 col.prop(scn, "geo_lod_min_ratio", text=tr("GN Strength Factor"), slider=True)
-                col.label(text="Higher Strength = More Merging", icon='INFO')
+                col.label(text=tr("Higher Strength = More Merging"), icon='INFO')
 
-                # --- 显示角度阈值滑块 ---
                 row = col.row(align=True)
-                row.prop(scn, "geo_lod_angle_threshold", text="Edge Threshold")
-                # 加上一个帮助图标提示
+                row.prop(scn, "geo_lod_angle_threshold", text=tr("Edge Threshold")) # 这里的 text 需要翻译
                 row.label(text="", icon='EDGESEL')
+
+                row = col.row(align=True)
+                row.prop(scn, "geo_lod_max_dist", text=tr("Max Merge Distance"))
+                row.label(text="", icon='DRIVER_DISTANCE')
                 
-                col.label(text="Higher Angle = More Merging", icon='INFO')
+                col.label(text=tr("Higher Angle = More Merging"), icon='INFO')
 
             # 3. 三大核心按钮 (只保留这一个区域，删除原来的重复块)
             row = box.row(align=True)
@@ -307,7 +310,7 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
             row.operator("tot.geo_lod_setup", text=tr("Setup Modifiers"), icon="MODIFIER")
             
             # 使用 Async Update (防止卡顿)
-            row.operator("tot.geo_lod_update_async", text=tr("Update Geometry"), icon="PLAY")
+            row.operator("tot.geo_lod_update_async", text=tr("Update Geometry (Async)"), icon="PLAY")
             
             row.operator("tot.geo_lod_reset", text=tr("Reset Geometry"), icon="FILE_REFRESH")   
             
