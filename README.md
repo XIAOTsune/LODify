@@ -81,7 +81,7 @@
 
 ## 🛠️ 如何安装
 
-1. 在本页面的 [Releases](https://github.com/YourUsername/LODify/releases) 下载最新的 `.zip` 文件。
+1. 在本页面的 [Releases](https://github.com/XIAOTsune/LODify/releases) 下载最新的 `.zip` 文件。
 2. 打开 Blender，顶部菜单 `Edit` -> `Preferences` -> `Get Extensions`。
 3. 点击右上角箭头 -> `Install from Disk...` 选择压缩包即可。
 
