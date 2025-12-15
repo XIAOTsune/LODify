@@ -4,6 +4,7 @@ import bpy
 import shutil
 from .. import utils 
 import time
+import gc
 
 class TOT_OT_UpdateImageList(bpy.types.Operator):
     bl_idname = "tot.updateimagelist"
@@ -21,7 +22,20 @@ class TOT_OT_UpdateImageList(bpy.types.Operator):
             if img.name in {'Render Result', 'Viewer Node'}: continue
             # 排除生成的图片 (Generated) 通常不需要压缩
             if img.source == 'GENERATED': continue
+            # 检查文件扩展名，如果是 exr 或 hdr，直接跳过，不让它进入列表
+            if img.filepath:
+                ext = os.path.splitext(img.filepath)[1].lower()
+                if ext in {'.exr', '.hdr'}:
+                    continue
 
+            # 也可以检查它是否被 World 环境使用 (双重保险)
+            is_world_tex = False
+            if bpy.context.scene.world and bpy.context.scene.world.node_tree:
+                for n in bpy.context.scene.world.node_tree.nodes:
+                    if n.type == 'TEX_ENVIRONMENT' and n.image == img:
+                        is_world_tex = True
+                        break
+            if is_world_tex: continue
             item = scn.image_list.add()
             item.tot_image_name = img.name
             
@@ -163,6 +177,18 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
     def process_image(self, task):
         """单个图片处理逻辑 (从原同步代码迁移而来)"""
         img = bpy.data.images.get(task["img_name"])
+        if not img: return
+
+        # HDR 格式锁
+        # 如果是 HDR/EXR，绝对禁止处理，直接返回
+        # 即使这里不返回，下面的 save_render 也会破坏线性空间的光照数据
+        if img.filepath:
+            ext = os.path.splitext(img.filepath)[1].lower()
+            if ext in {'.exr', '.hdr'}:
+                print(f"[TOT] Skipped HDR/EXR: {img.name}")
+                return
+
+
         target_size = task["target_size"]
         
         if not img: return
@@ -240,7 +266,18 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
         
         # 刷新列表 UI
         bpy.ops.tot.updateimagelist()
-        
+        # 运行多次以确保级联引用的数据都被清理干净
+        print("[TOT] Purging unused data blocks...")
+        for _ in range(3):
+            try:
+                bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+            except AttributeError:
+                # 兼容旧版本 API (如果有必要)
+                if hasattr(bpy.data, 'purge_unused_data'):
+                    bpy.data.purge_unused_data()
+                break
+            except Exception:
+                break
         # 强制刷新界面
         for win in context.window_manager.windows:
             for area in win.screen.areas:
@@ -443,15 +480,17 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
                     # 现在的逻辑：只要文件名里包含 base name 就可以
                     # 更严谨的逻辑建议：startswith(clean_name_base + "_")
                     for f in os.listdir(target_dir_abs):
+                        # [修复] 更严谨的匹配逻辑
+                        # 确保匹配的是 "Wood_..." 而不是 "WoodFloor_..."
+                        # 我们生成的文件名格式是: {base}_{size}px.{ext}
+                        # 所以文件名必须以 "{base}_" 开头
 
-                        # [修复点 2]：现在 clean_name_base 已经定义了，不会报错了
-                        if f.startswith(clean_name_base):
-                            # 简单的校验：确保是同名文件
-                            # 比如 Wood.jpg -> Wood_512px.jpg
-                            if clean_name_base in f:
-                                found_file = f
-                                break
+                        check_prefix = clean_name_base + "_"
 
+                        if f.startswith(check_prefix):
+                            # 再检查是否真的包含这个 base (其实 startswith 已经够了，但为了保险)
+                            found_file = f
+                            break
                 if found_file:
                     # 拼接相对路径
                     # 注意：Windows下有时需要处理路径分隔符，但 Blender 内部通常能处理 /
@@ -584,17 +623,21 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         for obj in mesh_objs:
             # 计算物体在屏幕上的像素大小
             px_size, visible = utils.calculate_screen_coverage(context.scene, obj, cam)
-            if not visible: continue
+            if not visible:
+                # 之前是 continue (跳过优化，保留原图 -> 导致显存不降)
+                # 现在的策略：看不见的物体，直接给个最低分辨率 (比如 32px)
+                # 这样既省显存，又不怕穿帮
+                target_res = 32
+            else:
+                # 可见的物体，走原来的计算逻辑
+                # [cite_start]基础算法：屏幕占比 * 1.2 (稍微留点余量) [cite: 226]
+                calculated_res = px_size * 1.2
 
-            # 基础算法：屏幕占比 * 1.2 (稍微留点余量)
-            calculated_res = px_size * 1.2
+                # [cite_start]1. 下限保护：不能小于 32px [cite: 227]
+                target_res = max(calculated_res, ABSOLUTE_MIN_FLOOR)
 
-            # ================= [核心逻辑修改] =================
-            # 1. 下限保护：不能小于 32px
-            target_res = max(calculated_res, ABSOLUTE_MIN_FLOOR)
-
-            # 2. 上限截断：不能超过用户设置的尺寸 (比如用户选了 1024，算出来 2048 也要降到 1024)
-            target_res = min(target_res, user_max_cap)
+                # [cite_start]2. 上限截断：不能超过用户设置的尺寸 [cite: 227]
+                target_res = min(target_res, user_max_cap)
             # =================================================
 
             for slot in obj.material_slots:
@@ -619,7 +662,12 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
     def process_image_task(self, task_data):
         """处理单张图片的逻辑"""
         img, req_px = task_data
-        
+        # hdr保护
+        if img.filepath:
+            ext = os.path.splitext(img.filepath)[1].lower()
+            if ext in {'.exr', '.hdr'}:
+                print(f"[TOT] Skipped HDR/EXR in Auto-Opt: {img.name}")
+                return
         # 1. 计算最终尺寸
         final_size = 4
         if req_px <= 4: final_size = 4
@@ -713,7 +761,20 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         context.window_manager.progress_end()
         
         bpy.ops.tot.updateimagelist()
-        
+
+        print("[TOT] Running Orphan Purge...")
+        for _ in range(3):  # 运行几次以确保级联引用的都被清掉
+            # 这里使用 outliner.orphans_purge 是假设你的 Blender 版本支持此操作符
+            # 如果你的版本不支持，可能需要手动调用 bpy.data.purge_unused_data()
+            try:
+                bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+            except AttributeError:
+                # 如果操作符不存在，尝试使用 data.purge_unused_data
+                if hasattr(bpy.data, 'purge_unused_data'):
+                    bpy.data.purge_unused_data()
+                break
+        # 强制回收 Python 层的垃圾内存
+        gc.collect()
         # 强制刷新 UI
         for area in context.screen.areas:
             area.tag_redraw()
