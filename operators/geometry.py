@@ -512,7 +512,48 @@ class TOT_OT_GeoLODApply(bpy.types.Operator):
     bl_idname = "tot.geo_lod_apply"
     bl_label = "Apply (Destructive)"
     bl_options = {'REGISTER', 'UNDO'}
+
     def execute(self, context):
+        scn = context.scene.tot_props
+        # 确定要应用哪个修改器名字
+        target_mod_name = "TOT_LOD_DECIMATE" if scn.geo_lod_method == 'DECIMATE' else "TOT_GEO_LOD"
+
+        applied_count = 0
+
+        # 必须在 Object 模式下才能应用修改器
+        if context.object and context.object.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+        # 获取当前选中的物体，或者处理全场景？
+        # 通常 Apply 操作是对当前选中的物体，或者是全场景带有该修改器的物体
+        # 既然是批量工具，建议处理全场景带有该修改器的物体
+
+        # 备份当前激活物体
+        original_active = context.view_layer.objects.active
+
+        for obj in context.scene.objects:
+            if obj.type != 'MESH': continue
+
+            mod = obj.modifiers.get(target_mod_name)
+            if mod:
+                # Blender API 限制：应用修改器必须让该物体成为“Active”
+                context.view_layer.objects.active = obj
+                try:
+                    bpy.ops.object.modifier_apply(modifier=target_mod_name)
+
+                    # 清理标记
+                    if "_tot_geo_lod_created" in obj:
+                        del obj["_tot_geo_lod_created"]
+
+                    applied_count += 1
+                except Exception as e:
+                    print(f"Failed to apply for {obj.name}: {e}")
+
+        # 恢复之前的激活物体
+        if original_active:
+            context.view_layer.objects.active = original_active
+
+        self.report({'INFO'}, f"Applied modifiers on {applied_count} objects.")
         return {'FINISHED'}
 
 classes = (
