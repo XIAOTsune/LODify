@@ -432,6 +432,19 @@ class TOT_OT_ClearDuplicateImage(bpy.types.Operator):
                     except Exception:
                         # 如果路径解析失败（比如是内存生成的图），为了安全起见，跳过
                         continue
+                    # 防止误杀：只有当两个图片指向硬盘上的同一个文件时，才合并！
+                    # 获取绝对路径并标准化 (处理 / 和 \ 的差异)
+                    try:
+                        path1 = os.path.normpath(bpy.path.abspath(img.filepath))
+                        path2 = os.path.normpath(bpy.path.abspath(original_img.filepath))
+
+                        # 如果路径不同 (比如一个是 Wood.jpg，一个是 Wood_Normal.jpg 只是名字巧合)，跳过！
+                        if path1 != path2:
+                            continue
+
+                    except Exception:
+                        # 如果路径解析失败（比如是内存生成的图），为了安全起见，跳过
+                        continue
                     # 这里简化逻辑：名字匹配即替换
                     remap_dict[img.name] = original_img
 
@@ -453,6 +466,21 @@ class TOT_OT_ClearDuplicateImage(bpy.types.Operator):
                         
         # 3. 清理未使用的图片 (可选：purge)
         # 这里为了安全，只替换引用，不做 purge，用户可以手动 File -> Clean Up -> Unused Data Blocks
+        # 3. 强力清理 (Purge)
+        # 这一步是为了让显存/内存立刻释放，而不是等用户重启 Blender
+        removed_blocks = 0
+
+        # 遍历所有图片数据块
+        # 注意：这里我们遍历的是 list(bpy.data.images)，因为如果在循环中 remove 可能会导致迭代器失效，
+        # 所以最好用 list() 包一下或者是小心处理。不过 remove(img) 通常安全。
+        for img in bpy.data.images:
+            # 只删除 Users 为 0 的图片 (没人用的)
+            if img.users == 0:
+                # 再次确认一下名字特征，防止误删用户只是暂时没连上的图
+                # 逻辑：名字长度 > 4 且 最后3位是数字 (如 .001)
+                if len(img.name) > 4 and img.name[-3:].isdigit():
+                    bpy.data.images.remove(img)
+                    removed_blocks += 1
         # 3. 强力清理 (Purge)
         # 这一步是为了让显存/内存立刻释放，而不是等用户重启 Blender
         removed_blocks = 0
@@ -516,10 +544,13 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
 
     # 接收目标分辨率参数，'ORIGINAL' 代表原图
     target_res: bpy.props.StringProperty()
+    target_res: bpy.props.StringProperty()
 
     def execute(self, context):
         scn = context.scene.tot_props
         target = self.target_res
+
+        # 获取当前 blend 文件的绝对目录
 
         # 获取当前 blend 文件的绝对目录
         base_path = bpy.path.abspath("//")
@@ -529,10 +560,29 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
 
         switched_count = 0
 
+
         for item in scn.image_list:
             img = bpy.data.images.get(item.tot_image_name)
             if not img: continue
             if img.source in {'VIEWER', 'GENERATED'}: continue
+
+            # ==========================================================
+            # [修复点 1]：在此处统一计算 clean_name_base
+            # ==========================================================
+            # 优先尝试从存档的原始路径获取文件名（最稳妥，防止文件名已经是 _1024px 导致再次叠加）
+            if "tot_original_path" in img:
+                raw_filepath = img["tot_original_path"]
+            else:
+                raw_filepath = img.filepath_from_user()
+
+            # 获取文件名 (例如 "Wood.jpg")
+            file_name = os.path.basename(raw_filepath)
+            if not file_name: file_name = img.name  # 防空回退
+
+            # 去除后缀 (例如 "Wood") -> 这就是 clean_name_base
+            clean_name_base, _ = os.path.splitext(file_name)
+            # ==========================================================
+
 
             # ==========================================================
             # [修复点 1]：在此处统一计算 clean_name_base
@@ -558,7 +608,10 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
                     orig_path = img["tot_original_path"]
 
                     # 转绝对路径检查是否存在
+
+                    # 转绝对路径检查是否存在
                     abs_orig_path = bpy.path.abspath(orig_path)
+
 
                     if os.path.exists(abs_orig_path):
                         img.filepath = orig_path
@@ -570,6 +623,7 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
                     pass
 
             # --- 情况 B: 切换到指定分辨率 (如 1024 或 camera_optimized) ---
+            # --- 情况 B: 切换到指定分辨率 (如 1024 或 camera_optimized) ---
             else:
                 # 构造目标文件夹路径
                 if target == "camera_optimized":
@@ -577,12 +631,17 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
                 else:
                     folder_name = f"textures_{target}px"
 
+
                 target_dir_abs = os.path.join(base_path, folder_name)
+
 
                 found_file = None
 
+
                 if os.path.exists(target_dir_abs):
                     # 遍历该文件夹下的所有文件，寻找匹配 clean_name_base 的文件
+                    # 现在的逻辑：只要文件名里包含 base name 就可以
+                    # 更严谨的逻辑建议：startswith(clean_name_base + "_")
                     # 现在的逻辑：只要文件名里包含 base name 就可以
                     # 更严谨的逻辑建议：startswith(clean_name_base + "_")
                     for f in os.listdir(target_dir_abs):
@@ -597,10 +656,25 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
                             # 再检查是否真的包含这个 base (其实 startswith 已经够了，但为了保险)
                             found_file = f
                             break
+                        # [修复] 更严谨的匹配逻辑
+                        # 确保匹配的是 "Wood_..." 而不是 "WoodFloor_..."
+                        # 我们生成的文件名格式是: {base}_{size}px.{ext}
+                        # 所以文件名必须以 "{base}_" 开头
+
+                        check_prefix = clean_name_base + "_"
+
+                        if f.startswith(check_prefix):
+                            # 再检查是否真的包含这个 base (其实 startswith 已经够了，但为了保险)
+                            found_file = f
+                            break
                 if found_file:
                     # 拼接相对路径
                     # 注意：Windows下有时需要处理路径分隔符，但 Blender 内部通常能处理 /
+                    # 拼接相对路径
+                    # 注意：Windows下有时需要处理路径分隔符，但 Blender 内部通常能处理 /
                     rel_path = f"//{folder_name}/{found_file}"
+
+                    # [关键] 真正执行切换的地方
 
                     # [关键] 真正执行切换的地方
                     img.filepath = rel_path
@@ -610,8 +684,10 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
                     # 没找到对应文件（可能是因为该图片在优化时被判断为不可见，所以没生成）
                     pass
 
+
         # 刷新列表 UI
         bpy.ops.tot.updateimagelist()
+
 
         msg = f"Restored {switched_count} images to Original." if target == 'ORIGINAL' else f"Switched {switched_count} images to {target}px."
         self.report({'INFO'}, msg)
@@ -751,6 +827,7 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
 
         if scn.resize_size == 'c':
             user_max_cap = scn.custom_resize_size
+            user_max_cap = scn.custom_resize_size
         else:
             try: user_max_cap = int(scn.resize_size)
             except: user_max_cap = 4096
@@ -761,7 +838,9 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         # 获取所有可见网格
         mesh_objs = [o for o in context.scene.objects if o.type == 'MESH' and not o.hide_render]
 
+
         for obj in mesh_objs:
+            # 计算物体在屏幕上的像素大小
             px_size, visible = utils.calculate_screen_coverage(context.scene, obj, cam)
             
             if not visible:
