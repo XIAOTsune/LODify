@@ -1,0 +1,16 @@
+# 虚拟环境
+venv/
+env/
+# 编译后的pyc文件
+__pycache__/
+*.pyc
+# 项目依赖
+requirements.txt（可选，若需共享则不忽略）
+# 日志
+*.log
+# IDE配置
+.idea/
+.vscode/
+
+merge.py
+project_context.txt

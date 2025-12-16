@@ -291,19 +291,19 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
                 col.prop(scn, "geo_lod_min_ratio", text=tr("Min Ratio (Safety Floor)"), slider=True)
                 col.label(text=tr("Prevents breaking close-up details"), icon='INFO')
             else:
+                # 1. 强度因子 (实际上是 LOD Factor 的敏感度)
                 col.prop(scn, "geo_lod_min_ratio", text=tr("GN Strength Factor"), slider=True)
-                col.label(text=tr("Higher Strength = More Merging"), icon='INFO')
-
-                row = col.row(align=True)
-                row.prop(scn, "geo_lod_angle_threshold", text=tr("Edge Threshold")) # 这里的 text 需要翻译
-                row.label(text="", icon='EDGESEL')
-
+                
+                # 2. 最大合并距离 (这是新逻辑的核心参数，提升显示优先级)
                 row = col.row(align=True)
                 row.prop(scn, "geo_lod_max_dist", text=tr("Max Merge Distance"))
                 row.label(text="", icon='DRIVER_DISTANCE')
                 
-                col.label(text=tr("Higher Angle = More Merging"), icon='INFO')
-
+                # 3. 提示信息更新
+                # 移除了 Angle Threshold 滑块，改为提示自动保护
+                box = col.box()
+                box.label(text=tr("Auto Edge Protection"), icon='SHADING_WIRE')
+                box.label(text=tr("Distance-based Collapse"), icon='MOD_PARTICLES')
             # 3. 三大核心按钮 (只保留这一个区域，删除原来的重复块)
             row = box.row(align=True)
             row.scale_y = 1.2

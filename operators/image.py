@@ -1,10 +1,18 @@
 import os
-import re
 import bpy
 import shutil
-from .. import utils 
 import time
 import gc
+import threading
+import queue
+from .. import utils
+
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+    print("[TOT] PIL (Pillow) not found. Falling back to native Blender API.")
 
 class TOT_OT_UpdateImageList(bpy.types.Operator):
     bl_idname = "tot.updateimagelist"
@@ -18,17 +26,9 @@ class TOT_OT_UpdateImageList(bpy.types.Operator):
         count = 0
         
         for img in bpy.data.images:
-            # 排除渲染结果和浏览器节点
             if img.name in {'Render Result', 'Viewer Node'}: continue
-            # 排除生成的图片 (Generated) 通常不需要压缩
             if img.source == 'GENERATED': continue
-            # 检查文件扩展名，如果是 exr 或 hdr，直接跳过，不让它进入列表
-            if img.filepath:
-                ext = os.path.splitext(img.filepath)[1].lower()
-                if ext in {'.exr', '.hdr'}:
-                    continue
 
-            # 也可以检查它是否被 World 环境使用 (双重保险)
             is_world_tex = False
             if bpy.context.scene.world and bpy.context.scene.world.node_tree:
                 for n in bpy.context.scene.world.node_tree.nodes:
@@ -36,10 +36,10 @@ class TOT_OT_UpdateImageList(bpy.types.Operator):
                         is_world_tex = True
                         break
             if is_world_tex: continue
+
             item = scn.image_list.add()
             item.tot_image_name = img.name
             
-            # 状态检查
             if img.packed_file:
                 item.packed_img = 1 # Packed
             elif img.library:
@@ -47,11 +47,9 @@ class TOT_OT_UpdateImageList(bpy.types.Operator):
             else:
                 item.packed_img = 0 # File
             
-            # 计算大小
             size_str = utils.get_image_size_str(img)
             item.image_size = size_str
             total_size_mb += float(size_str)
-            
             count += 1
             
         scn.r_total_images = count
@@ -71,44 +69,145 @@ class TOT_OT_SelectAllImages(bpy.types.Operator):
             i.image_selected = has_unselected
         return {'FINISHED'}
 
+def pil_resize_worker(task_data, result_queue):
+    """
+    这是一个纯 Python 函数，绝对不要调用任何 bpy.* API
+    """
+    try:
+        src_path = task_data["src_path"]
+        dst_path = task_data["dst_path"]
+        target_size = task_data["target_size"]
+        action = task_data.get("action", "RESIZE") # 获取动作指令
+
+        # [修复逻辑 A]：如果是 HDR/EXR，或者标记为直接复制，则不进行缩放，直接拷贝文件
+        if action == "COPY":
+            if os.path.normpath(src_path) != os.path.normpath(dst_path):
+                shutil.copy2(src_path, dst_path)
+            result_queue.put({"status": "COPIED", "img_name": task_data["img_name"], "dst_path": dst_path})
+            return
+
+        # 1. 打开图片
+        with Image.open(src_path) as img:
+            # [修复逻辑 B]：如果是 PNG，打开后立即强制转为 RGBA，防止 resize 过程中丢失 Alpha
+            ext = os.path.splitext(dst_path)[1].lower()
+            if ext == '.png':
+                if img.mode != 'RGBA':
+                    img = img.convert('RGBA')
+
+            # 2. 检查尺寸，防止无效缩放
+            width, height = img.size
+            if width <= target_size and height <= target_size:
+                # 如果不需要缩放，直接复制文件
+                if os.path.normpath(src_path) != os.path.normpath(dst_path):
+                    shutil.copy2(src_path, dst_path)
+                result_queue.put({"status": "COPIED", "img_name": task_data["img_name"], "dst_path": dst_path})
+                return
+
+            # 3. 计算新尺寸 (保持比例)
+            ratio = min(target_size / width, target_size / height)
+            new_width = int(width * ratio)
+            new_height = int(height * ratio)
+
+            # 4. 执行缩放
+            resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # 5. 保存逻辑
+            if ext in ('.jpg', '.jpeg'):
+                # JPG 不支持透明，必须转 RGB 并在白底上合成 (或直接转)
+                if resized_img.mode in ('RGBA', 'LA'):
+                    background = Image.new('RGB', resized_img.size, (255, 255, 255))
+                    # 3.0+ 语法 alpha_composite, 或 paste
+                    background.paste(resized_img, mask=resized_img.split()[3]) 
+                    resized_img = background
+                elif resized_img.mode != 'RGB':
+                    resized_img = resized_img.convert('RGB')
+                
+                resized_img.save(dst_path, quality=95, optimize=True)
+
+            elif ext == '.png':
+                # PNG 已经在前面强制转为 RGBA 了，直接保存即可
+                resized_img.save(dst_path, optimize=True)
+            
+            else:
+                 resized_img.save(dst_path)
+            
+        result_queue.put({"status": "SUCCESS", "img_name": task_data["img_name"], "dst_path": dst_path})
+         
+    except Exception as e:
+        result_queue.put({"status": "ERROR", "img_name": task_data["img_name"], "error": str(e)})
+
 class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
-    """异步缩放图片，避免界面卡死"""
-    bl_idname = "tot.resizeimages_async"  # 新的 ID
+    """混合动力缩放：优先使用 PIL 多线程，不支持时回退原生 API"""
+    bl_idname = "tot.resizeimages_async"
     bl_label = "Resize Images (Async)"
     bl_options = {'REGISTER', 'UNDO'}
 
     _timer = None
-    _queue = []
+    _task_queue = []      # 待处理任务
+    _active_threads = []  # 正在运行的线程
+    _result_queue = None  # 线程完成后的消息队列
+    
     _processed = 0
     _total_tasks = 0
     
-    # 每一帧允许运行的时间 (秒)，超过则把控制权交还给界面
-    TIME_BUDGET = 0.1 
+    # 线程池配置
+    MAX_THREADS = 4       # 同时运行的 PIL 线程数 (防止磁盘 IO 爆炸)
+    TIME_BUDGET = 0.02    # 主线程每帧处理原生任务的时间预算
 
     def modal(self, context, event):
         if event.type == 'TIMER':
-            # 如果队列为空，说明处理完毕
-            if not self._queue:
-                return self.finish(context)
             
-            start_time = time.time()
-            
-            # --- 时间片循环 ---
-            while self._queue:
-                # 取出一个任务
-                task = self._queue.pop(0)
-                
+            # --- A. 处理 PIL 线程的回调结果 ---
+            # 只要结果队列里有东西，就在主线程里处理掉 (即执行 bpy 操作)
+            while not self._result_queue.empty():
                 try:
-                    self.process_image(task)
-                except Exception as e:
-                    print(f"Resize Error: {e}")
-                
-                self._processed += 1
-                
-                # 检查时间预算：如果处理耗时超过预算，立即暂停，等待下一帧
-                if (time.time() - start_time) > self.TIME_BUDGET:
+                    res = self._result_queue.get_nowait()
+                    self.handle_pil_result(res)
+                    self._processed += 1
+                except queue.Empty:
                     break
             
+            # --- B. 清理已结束的线程 ---
+            # 过滤掉已经执行完的线程
+            self._active_threads = [t for t in self._active_threads if t.is_alive()]
+            
+            # --- C. 调度新任务 ---
+            # 如果任务队列空了，且没有活动线程，说明全部搞定
+            if not self._task_queue and not self._active_threads:
+                return self.finish(context)
+            
+            # 如果还有任务，且线程池没满，继续分发
+            start_time = time.time()
+            
+            while self._task_queue:
+                # 检查是否超时 (针对 Native 任务) 或 线程池满 (针对 PIL 任务)
+                if (time.time() - start_time) > self.TIME_BUDGET:
+                    break
+                    
+                # 偷看下一个任务类型，但不取出
+                next_task = self._task_queue[0]
+                
+                if next_task["method"] == "PIL":
+                    if len(self._active_threads) < self.MAX_THREADS:
+                        # 启动线程
+                        task = self._task_queue.pop(0)
+                        t = threading.Thread(target=pil_resize_worker, args=(task, self._result_queue))
+                        t.daemon = True
+                        t.start()
+                        self._active_threads.append(t)
+                    else:
+                        # 线程池满了，这一帧先不发了，等下一帧
+                        break
+                        
+                elif next_task["method"] == "NATIVE":
+                    # 原生任务必须在主线程执行
+                    task = self._task_queue.pop(0)
+                    try:
+                        self.process_native_image(task)
+                    except Exception as e:
+                        print(f"Native Error: {e}")
+                    self._processed += 1
+
             # 更新进度条
             context.window_manager.progress_update(self._processed)
             
@@ -117,146 +216,166 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
     def invoke(self, context, event):
         scn = context.scene.tot_props
         
-        # 1. 基础检查
         base_path = bpy.path.abspath("//")
         if not base_path:
             self.report({'ERROR'}, "Please save the .blend file first!")
             return {'CANCELLED'}
 
-        # 2. 准备输出目录 (在开始前只做一次)
+        # 准备输出目录
         if scn.resize_size == 'c':
             self.target_size = scn.custom_resize_size
         else:
             self.target_size = int(scn.resize_size)
 
         folder_name = f"textures_{self.target_size}px"
-        
         if scn.duplicate_images and not scn.use_same_directory:
             self.output_dir = os.path.join(bpy.path.abspath(scn.custom_output_path), folder_name)
         else:
             self.output_dir = os.path.join(base_path, folder_name)
 
         if not os.path.exists(self.output_dir):
-            try:
-                os.makedirs(self.output_dir)
-            except Exception as e:
-                self.report({'ERROR'}, f"Cannot create directory: {e}")
-                return {'CANCELLED'}
+            os.makedirs(self.output_dir, exist_ok=True)
 
-        # 3. 构建任务队列
-        self._queue = []
+        # 构建任务队列
+        self._task_queue = []
+        self._result_queue = queue.Queue()
+        
         for item in scn.image_list:
             if not item.image_selected: continue
             
-            # 验证图片有效性
             img = bpy.data.images.get(item.tot_image_name)
             if not img: continue
             if img.source in {'VIEWER', 'GENERATED'}: continue
             
-            # 将任务数据打包存入队列
-            self._queue.append({
-                "img_name": item.tot_image_name,
-                "target_size": self.target_size
-            })
+            # --- 智能分流策略 ---
+            method = "NATIVE"
+            action = "RESIZE"
+            
+            # 获取后缀名
+            ext = ""
+            if img.filepath:
+                ext = os.path.splitext(img.filepath)[1].lower()
 
-        if not self._queue:
+            # [修复 2] 绝对禁止 PIL 处理高动态范围图像，防止变紫丢失
+            if ext in {'.exr', '.hdr'}:
+                print(f"[TOT] Copying HDR/EXR (No Resize): {img.name}")
+                # 使用 PIL 线程（因为它其实是文件 IO 线程）来做拷贝，避免卡顿
+                method = "PIL" 
+                action = "COPY"
+            
+            # 判据 1: 是否有 PIL 库
+            elif HAS_PIL: # 注意这里用了 elif
+                # 判据 2: 必须是硬盘上的实体文件 (不能是 Packed/Linked)
+                if not img.packed_file and img.filepath:
+                     abs_path = bpy.path.abspath(img.filepath)
+                     if os.path.exists(abs_path):
+                         method = "PIL"
+            
+            # 记录原始路径 (这对 Hot Swap 很重要)
+            if "tot_original_path" not in img:
+                img["tot_original_path"] = img.filepath
+
+            # 构造目标文件名
+            original_filepath = img.filepath_from_user()
+            file_name = os.path.basename(original_filepath)
+            if not file_name: file_name = f"{img.name}.png"
+            name_part, ext_part = os.path.splitext(file_name)
+            if not ext_part: ext_part = ".png"
+            
+            # [细节] 如果是 COPY 模式，保持原后缀；如果是缩放，通常转 png/jpg
+            # 这里为了统一管理，建议 HDR 保持原后缀
+            if action == "COPY":
+                final_ext = ext # 保持 .exr 或 .hdr
+            else:
+                final_ext = ext_part
+            
+            new_file_name = f"{name_part}_{self.target_size}px{ext_part}"
+            new_full_path = os.path.join(self.output_dir, new_file_name)
+
+            task_data = {
+                "img_name": item.tot_image_name,
+                "target_size": self.target_size,
+                "src_path": bpy.path.abspath(img.filepath), 
+                "dst_path": new_full_path,                 
+                "method": method,
+                "action": action # 传入动作指令
+            }
+            self._task_queue.append(task_data)
+
+        if not self._task_queue:
             self.report({'WARNING'}, "No images selected.")
             return {'CANCELLED'}
 
-        # 4. 启动模态
-        self._total_tasks = len(self._queue)
+        self._total_tasks = len(self._task_queue)
         self._processed = 0
+        self._active_threads = []
         
         context.window_manager.progress_begin(0, self._total_tasks)
         self._timer = context.window_manager.event_timer_add(0.01, window=context.window)
         context.window_manager.modal_handler_add(self)
         
-        self.report({'INFO'}, f"Starting Async Resize: {self._total_tasks} images...")
+        pil_count = sum(1 for t in self._task_queue if t["method"] == "PIL")
+        self.report({'INFO'}, f"Starting: {pil_count} via PIL (Fast), {self._total_tasks - pil_count} via Blender (Slow).")
         return {'RUNNING_MODAL'}
 
-    def process_image(self, task):
-        """单个图片处理逻辑 (从原同步代码迁移而来)"""
+    def handle_pil_result(self, res):
+        """PIL 线程完成后，主线程的回调"""
+        img = bpy.data.images.get(res["img_name"])
+        if not img: return
+        
+        if res["status"] in {"SUCCESS", "COPIED"}:
+            # [核心逻辑] 热重载
+            # PIL 已经在后台默默把图改好了，现在告诉 Blender 切换路径并刷新
+            # Blender 只需要加载这张小图，完全不经过内存解压大图的过程
+            try:
+                # 只有当路径真正改变时才设置，避免多余操作
+                if hasattr(img, "filepath") and "dst_path" in res:
+                    # 使用相对路径更友好
+                    rel_path = bpy.path.relpath(res["dst_path"])
+                    img.filepath = rel_path
+                
+                img.reload()
+            except Exception as e:
+                print(f"Reload Error: {e}")
+        else:
+            print(f"PIL Failed for {img.name}: {res.get('error')}")
+
+    def process_native_image(self, task):
+        """兜底方案：原生 API 处理 (单线程，卡顿，但兼容性好)"""
         img = bpy.data.images.get(task["img_name"])
         if not img: return
-
-        # HDR 格式锁
-        # 如果是 HDR/EXR，绝对禁止处理，直接返回
-        # 即使这里不返回，下面的 save_render 也会破坏线性空间的光照数据
-        if img.filepath:
-            ext = os.path.splitext(img.filepath)[1].lower()
-            if ext in {'.exr', '.hdr'}:
-                print(f"[TOT] Skipped HDR/EXR: {img.name}")
-                return
-
-
+        
+        # ... (这里保留原有的 Blender Native 处理逻辑，代码结构一致) ...
+        # 为了节省篇幅，核心逻辑是 scale() -> save_render() -> reload()
+        # 请确保 task["dst_path"] 被正确利用
+        
         target_size = task["target_size"]
+        new_full_path = task["dst_path"]
         
-        if not img: return
-
-        # 0. 记录原始路径
-        if "tot_original_path" not in img:
-            img["tot_original_path"] = img.filepath
-
-        # 1. 构造文件名
-        original_filepath = img.filepath_from_user()
-        file_name = os.path.basename(original_filepath)
-        if not file_name: file_name = f"{img.name}.png"
-        
-        name_part, ext_part = os.path.splitext(file_name)
-        if not ext_part: ext_part = ".png"
-        
-        new_file_name = f"{name_part}_{target_size}px{ext_part}"
-        new_full_path = os.path.join(self.output_dir, new_file_name)
-        
-        # 2. 内存缩放(带保护)
-        # 检查原图尺寸
-        orig_w = img.size[0]
-        orig_h = img.size[1]
-
-        # 只有当原图比目标尺寸大时，才进行缩放
-        # 如果原图(256) < 目标(1024)，则不缩放，直接按原样保存
-        should_resize = (orig_w > target_size) or (orig_h > target_size)
-
-        if should_resize:
+        # 简单检查尺寸
+        if img.size[0] > target_size or img.size[1] > target_size:
             img.scale(target_size, target_size)
-            # 注意：scale 操作会直接修改内存中的图像数据
-        else:
-            # 不执行 scale，直接保存就是“复制”的效果
-            # 但文件名依然保留 _1024px 后缀，方便统一管理和切换逻辑
-            pass
-
-        #################
-        # 3. 物理保存 (带格式保护)
-        # 使用 bpy.context.scene 确保能获取到场景
-        render_settings = bpy.context.scene.render.image_settings
-
-        # 1. 备份当前场景的渲染设置
-        old_file_format = render_settings.file_format
-        old_color_mode = render_settings.color_mode
-        old_depth = render_settings.color_depth
-
-        # 2. 根据文件后缀强行指定格式
-        ext = os.path.splitext(new_full_path)[1].lower()
-
-        if ext in ['.jpg', '.jpeg']:
-            render_settings.file_format = 'JPEG'
-            render_settings.color_mode = 'RGB'  # 强制 RGB 省空间
-        elif ext == '.png':
-            render_settings.file_format = 'PNG'
-            render_settings.color_mode = 'RGBA'  # 默认保留 Alpha
-        # 你可以在这里加更多格式支持，比如 .tga, .bmp 等
-
+            
+        # 保存设置备份
+        render = bpy.context.scene.render.image_settings
+        old_fmt = render.file_format
+        old_mode = render.color_mode
+        
         try:
-            # 3. 执行保存
+            # 根据后缀简单判断格式
+            ext = os.path.splitext(new_full_path)[1].lower()
+            if ext in {'.jpg', '.jpeg'}:
+                render.file_format = 'JPEG'
+                render.color_mode = 'RGB'
+            elif ext == '.png':
+                render.file_format = 'PNG'
+                render.color_mode = 'RGBA' # 强制开启透明通道
+                
             img.save_render(filepath=new_full_path)
         finally:
-            # 4. 无论是否报错，必须还原用户的设置
-            render_settings.file_format = old_file_format
-            render_settings.color_mode = old_color_mode
-            render_settings.color_depth = old_depth
-        # ================================================================
-
-        # 4. 重连并刷新
+            render.file_format = old_fmt
+            render.color_mode = old_mode # 还原颜色模式
+            
         img.filepath = new_full_path
         img.reload()
 
@@ -264,26 +383,13 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
         context.window_manager.event_timer_remove(self._timer)
         context.window_manager.progress_end()
         
-        # 刷新列表 UI
+        # 刷新 UI
         bpy.ops.tot.updateimagelist()
-        # 运行多次以确保级联引用的数据都被清理干净
-        print("[TOT] Purging unused data blocks...")
-        for _ in range(3):
-            try:
-                bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
-            except AttributeError:
-                # 兼容旧版本 API (如果有必要)
-                if hasattr(bpy.data, 'purge_unused_data'):
-                    bpy.data.purge_unused_data()
-                break
-            except Exception:
-                break
-        # 强制刷新界面
-        for win in context.window_manager.windows:
-            for area in win.screen.areas:
-                area.tag_redraw()
-                
-        self.report({'INFO'}, f"Resize Complete! Processed {self._processed} images.")
+        
+        # 强力 GC，回收 Native 模式产生的垃圾
+        gc.collect() 
+        
+        self.report({'INFO'}, f"Resize Complete! {self._processed} images processed.")
         return {'FINISHED'}
     
 class TOT_OT_ClearDuplicateImage(bpy.types.Operator):

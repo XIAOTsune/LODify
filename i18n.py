@@ -72,6 +72,9 @@ TRANSLATION_DICT = {
     "Full": "全精度",
     "Max Merge Distance": "最大合并距离",
     "Merge Radius at furthest distance": "极远处的顶点合并半径 (值越大减面越狠)",
+    "Auto Edge Protection": "自动边缘保护 (智能)",
+    "Distance-based Collapse": "基于距离的空间塌陷",
+    "Max Merge Distance": "最大合并距离 (塌陷半径)",
     
     # --- 提示信息 ---
     "(No resized sets found)": "(未找到已生成的尺寸组)",

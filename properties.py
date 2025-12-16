@@ -132,14 +132,6 @@ class TOT_Props(bpy.types.PropertyGroup):
             max=1.0, 
             description="最强减面保护：即使物体在极远处，也至少保留此比例的面数 (防止完全崩坏)"
         )
-    # 边角阈值
-    geo_lod_angle_threshold: FloatProperty(
-        name="Sharpness Limit (Rad)",
-        default=2.5,  # 默认值设高一点 (1.5弧度 ≈ 85度)，保证大部分面都能被合并
-        min=0.0,
-        max=3.14159,
-        description="角度阈值：小于此角度的边缘被视为平坦区并允许合并。数值越大，减面越狠 (保护越少)。"
-    )
     # 最大合并距离
     geo_lod_max_dist: FloatProperty(
         name="Max Merge Distance",
