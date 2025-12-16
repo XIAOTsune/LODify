@@ -618,56 +618,97 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
         return {'FINISHED'}
     
 class TOT_OT_OptimizeByCamera(bpy.types.Operator):
-    """【非阻塞版】根据相机视角自动计算并生成优化贴图"""
+    """【多线程版】根据相机视角自动计算并生成优化贴图"""
     bl_idname = "tot.optimize_by_camera"
     bl_label = "Optimize by Camera (Async)"
     bl_options = {'REGISTER', 'UNDO'}
 
     _timer = None
-    _queue = []       # 待处理任务队列
-    _processed = 0    # 已处理数量
+    _queue = []       # 待处理任务数据 (img, req_px)
+    _active_threads = [] # 正在运行的线程
+    _result_queue = None # 结果队列
+    
+    _processed = 0    # 已完成数量
     _total_tasks = 0  # 总任务数
     _output_dir = ""  # 输出路径
     
     # 状态变量
     _phase = 'INIT'   # INIT -> ANALYZING -> PROCESSING -> FINISHED
 
-    TIME_BUDGET = 0.1
+    # 配置
+    MAX_THREADS = 4       # 并发线程数
+    TIME_BUDGET = 0.02    # 主线程每帧的时间预算
 
     def modal(self, context, event):
         if event.type == 'TIMER':
-            # --- 阶段 1: 分析阶段 ---
+            # --- 阶段 1: 分析阶段 (主线程运行，很快) ---
             if self._phase == 'ANALYZING':
                 self.do_analysis(context)
                 self._phase = 'PROCESSING'
+                # 初始化线程队列
+                self._result_queue = queue.Queue()
+                self._active_threads = []
                 context.window_manager.progress_begin(0, self._total_tasks)
                 return {'RUNNING_MODAL'}
 
-            # --- 阶段 2: 动态批处理阶段 ---
+            # --- 阶段 2: 处理阶段 (多线程调度) ---
             elif self._phase == 'PROCESSING':
                 
-                # 记录这一帧开始的时间
-                start_time = time.time()
-                
-                # 【核心循环】只要队列不为空，且没超时，就一直干活！
-                while self._queue:
-                    # 1. 取出任务
-                    task_data = self._queue.pop(0)
-                    self.process_image_task(task_data)
-                    self._processed += 1
-                    
-                    # 2. 检查时间是否用完
-                    # 如果当前操作耗时已经超过了 TIME_BUDGET (比如 0.1秒)
-                    # 立即中断循环，把控制权还给 Blender 去刷新 UI
-                    if (time.time() - start_time) > self.TIME_BUDGET:
+                # A. 处理已完成的线程结果 (主线程回调)
+                while self._result_queue and not self._result_queue.empty():
+                    try:
+                        res = self._result_queue.get_nowait()
+                        self.handle_pil_result(res)
+                        self._processed += 1
+                    except queue.Empty:
                         break
                 
-                # 更新进度条 (不管处理了多少张，这一帧结束时更新一次)
-                context.window_manager.progress_update(self._processed)
+                # B. 清理僵尸线程
+                self._active_threads = [t for t in self._active_threads if t.is_alive()]
                 
-                # 如果队列空了，说明做完了
-                if not self._queue:
+                # C. 检查是否全部完成
+                if not self._queue and not self._active_threads:
                     self._phase = 'FINISHED'
+                
+                # D. 分发新任务
+                start_time = time.time()
+                
+                while self._queue:
+                    # 1. 检查时间预算 (给 UI 喘息机会) 和 线程池容量
+                    if (time.time() - start_time) > self.TIME_BUDGET:
+                        break
+                    if len(self._active_threads) >= self.MAX_THREADS:
+                        break
+                        
+                    # 2. 取出一个原始请求
+                    img, req_px = self._queue.pop(0)
+                    
+                    # 3. 准备任务数据 (计算尺寸、路径等)
+                    # 如果返回 None，说明被跳过或缓存命中了
+                    task_data = self.prepare_task_data(img, req_px)
+                    
+                    if not task_data:
+                        self._processed += 1 # 视为已处理
+                        continue
+                        
+                    # 4. 根据方法分发
+                    if task_data["method"] == "PIL":
+                        t = threading.Thread(target=pil_resize_worker, args=(task_data, self._result_queue))
+                        t.daemon = True
+                        t.start()
+                        self._active_threads.append(t)
+                    else:
+                        # 原生处理 (在主线程同步执行)
+                        try:
+                            # 借用 ResizeImagesAsync 的原生处理逻辑，或者简单的处理
+                            # 这里为了代码复用，简单实现一个原生调用
+                            self.process_native_fallback(task_data)
+                        except Exception as e:
+                            print(f"Native Error: {e}")
+                        self._processed += 1
+
+                # 更新进度条
+                context.window_manager.progress_update(self._processed)
             
             # --- 阶段 3: 结束 ---
             elif self._phase == 'FINISHED':
@@ -689,62 +730,46 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
             self.report({'ERROR'}, "Save file first!")
             return {'CANCELLED'}
 
-        # 启动定时器，每 0.01 秒触发一次 modal
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.01, window=context.window)
         wm.modal_handler_add(self)
         
-        # 初始化状态
         self._phase = 'ANALYZING'
         self._queue = []
         self._processed = 0
         self._output_dir = os.path.join(base_path, "textures_camera_optimized")
         if not os.path.exists(self._output_dir):
-            os.makedirs(self._output_dir)
+            os.makedirs(self._output_dir, exist_ok=True)
             
         self.report({'INFO'}, "Starting Camera Optimization...")
         return {'RUNNING_MODAL'}
 
     def do_analysis(self, context):
-        """分析场景，构建任务队列"""
+        """分析场景，构建任务队列 (保持原逻辑不变)"""
         scn = context.scene.tot_props
         cam = scn.lod_camera or context.scene.camera
 
-        # 1. 获取用户设置的【上限】(Max Cap)
-        # 之前这里逻辑反了，现在我们将它作为最大值
         if scn.resize_size == 'c':
             user_max_cap = scn.custom_resize_size
         else:
-            try:
-                user_max_cap = int(scn.resize_size)
-            except:
-                user_max_cap = 4096  # 如果读取失败，给一个默认的大上限
+            try: user_max_cap = int(scn.resize_size)
+            except: user_max_cap = 4096
 
-        # 定义一个绝对死线（下限），防止贴图变成 1x1 像素看不清
         ABSOLUTE_MIN_FLOOR = 32
-
         image_res_map = {}
+        
+        # 获取所有可见网格
         mesh_objs = [o for o in context.scene.objects if o.type == 'MESH' and not o.hide_render]
 
         for obj in mesh_objs:
-            # 计算物体在屏幕上的像素大小
             px_size, visible = utils.calculate_screen_coverage(context.scene, obj, cam)
+            
             if not visible:
-                # 之前是 continue (跳过优化，保留原图 -> 导致显存不降)
-                # 现在的策略：看不见的物体，直接给个最低分辨率 (比如 32px)
-                # 这样既省显存，又不怕穿帮
-                target_res = 32
+                target_res = 32 # 不可见物体给最低分辨率
             else:
-                # 可见的物体，走原来的计算逻辑
-                # [cite_start]基础算法：屏幕占比 * 1.2 (稍微留点余量) [cite: 226]
                 calculated_res = px_size * 1.2
-
-                # [cite_start]1. 下限保护：不能小于 32px [cite: 227]
                 target_res = max(calculated_res, ABSOLUTE_MIN_FLOOR)
-
-                # [cite_start]2. 上限截断：不能超过用户设置的尺寸 [cite: 227]
                 target_res = min(target_res, user_max_cap)
-            # =================================================
 
             for slot in obj.material_slots:
                 if slot.material and slot.material.use_nodes:
@@ -752,33 +777,29 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
                         if node.type == 'TEX_IMAGE' and node.image:
                             img = node.image
                             if img.source in {'VIEWER', 'GENERATED'}: continue
-
-                            # 记录该图片在所有物体中需要的最大分辨率
+                            
+                            # 记录最大需求
                             current_max = image_res_map.get(img, 0)
                             if target_res > current_max:
                                 image_res_map[img] = target_res
         
-        # 将 Map 转换为任务列表
+        # 转换为列表
         for img, req_px in image_res_map.items():
             self._queue.append((img, req_px))
             
         self._total_tasks = len(self._queue)
         print(f"[TOT] Analysis complete. {self._total_tasks} textures to process.")
 
-    def process_image_task(self, task_data):
-        """处理单张图片的逻辑"""
-        img, req_px = task_data
-        # hdr保护
-        if img.filepath:
-            ext = os.path.splitext(img.filepath)[1].lower()
-            if ext in {'.exr', '.hdr'}:
-                print(f"[TOT] Skipped HDR/EXR in Auto-Opt: {img.name}")
-                return
-        # 1. 计算最终尺寸
+    def prepare_task_data(self, img, req_px):
+        """
+        核心逻辑：计算最终尺寸、生成路径、判断是否需要处理
+        返回 task_dict 或者 None (如果跳过)
+        """
+        # 1. 计算 Power of 2 尺寸 (保持原有逻辑)
         final_size = 4
         if req_px <= 4: final_size = 4
         elif req_px <= 8: final_size = 8        
-        if req_px <= 16: final_size = 16
+        elif req_px <= 16: final_size = 16
         elif req_px <= 32: final_size = 32
         elif req_px <= 64: final_size = 64
         elif req_px <= 128: final_size = 128
@@ -795,98 +816,119 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         if final_size > max_orig: final_size = max_orig
         if final_size < 4: final_size = 4
 
-        try:
-            # 构造路径
-            if "tot_original_path" not in img:
-                img["tot_original_path"] = img.filepath
+        # 2. 构造文件名和路径
+        if "tot_original_path" not in img:
+            img["tot_original_path"] = img.filepath
 
-            original_filepath = img.filepath_from_user()
-            file_name = os.path.basename(original_filepath)
-            if not file_name: file_name = f"{img.name}.png"
-            name_part, ext_part = os.path.splitext(file_name)
-            if not ext_part: ext_part = ".png"
+        original_filepath = img.filepath_from_user()
+        file_name = os.path.basename(original_filepath)
+        if not file_name: file_name = f"{img.name}.png"
+        name_part, ext_part = os.path.splitext(file_name)
+        if not ext_part: ext_part = ".png"
 
-            new_file_name = f"{name_part}_{final_size}px{ext_part}"
-            new_full_path = os.path.join(self._output_dir, new_file_name)
+        new_file_name = f"{name_part}_{final_size}px{ext_part}"
+        new_full_path = os.path.join(self._output_dir, new_file_name)
 
-            # --- [关键优化] 智能缓存检查 ---
-            # 如果文件已经存在，且我们认为无需覆盖，则直接使用，跳过 scale 和 save
-            file_exists = os.path.exists(new_full_path)
+        # 3. 智能缓存检查 (如果文件已存在，直接重连，不生成任务)
+        if os.path.exists(new_full_path):
+            img.filepath = new_full_path
+            img.reload()
+            return None # 任务结束，无需入队
+
+        # 4. 决定处理方式 (PIL vs Native, RESIZE vs COPY)
+        method = "NATIVE"
+        action = "RESIZE" # 默认动作
+
+        # 获取真实后缀
+        ext = ext_part.lower()
+        if img.filepath:
+            ext = os.path.splitext(img.filepath)[1].lower()
+
+        # [HDR/EXR 保护]：强制 COPY 模式
+        if ext in {'.exr', '.hdr'}:
+            method = "PIL"
+            action = "COPY"
+        elif HAS_PIL:
+            if not img.packed_file and img.filepath:
+                 abs_path = bpy.path.abspath(img.filepath)
+                 if os.path.exists(abs_path):
+                     method = "PIL"
+        
+        # 构造任务包
+        task_data = {
+            "img_name": img.name,
+            "target_size": final_size,
+            "src_path": bpy.path.abspath(img.filepath), 
+            "dst_path": new_full_path,
+            "method": method,
+            "action": action 
+        }
+        return task_data
+
+    def handle_pil_result(self, res):
+        """处理 PIL 线程的回调结果"""
+        img = bpy.data.images.get(res["img_name"])
+        if not img: return
+        
+        if res["status"] in {"SUCCESS", "COPIED"}:
+            try:
+                # 只有当路径真正改变时才设置
+                if hasattr(img, "filepath") and "dst_path" in res:
+                    rel_path = bpy.path.relpath(res["dst_path"])
+                    img.filepath = rel_path
+                img.reload()
+            except Exception as e:
+                print(f"Reload Error: {e}")
+        else:
+            print(f"PIL Failed for {img.name}: {res.get('error')}")
+
+    def process_native_fallback(self, task):
+        """原生 API 兜底 (借用 ResizeImagesAsync 的逻辑思想)"""
+        # 注意：这里需要重新获取 Image 对象，因为是在主线程调用的
+        img = bpy.data.images.get(task["img_name"])
+        if not img: return
+        
+        target_size = task["target_size"]
+        new_full_path = task["dst_path"]
+        
+        # 简单检查尺寸
+        if img.size[0] > target_size or img.size[1] > target_size:
+            img.scale(target_size, target_size)
             
-            if file_exists:
-                # 只有当文件存在，我们直接重连，不进行 scale 和 I/O 操作
-                # 这会极大地消除“重复运行”时的卡顿
-                img.filepath = new_full_path
-                img.reload()
-                # print(f"Skipped (Cached): {new_file_name}")
-            else:
-                # 文件不存在，必须生成
-                # Scale 和 Save 是最耗时的，这步在 Modal 里执行，不会卡死 UI
-                # 1. 只有当 目标尺寸 < 原图尺寸 时才执行缩放
-                # 如果相等 (final_size == max_orig)，说明不需要缩小，直接保存原图数据即可
-                if final_size < max_orig:
-                    img.scale(final_size, final_size)
-                ######
-                # 使用 bpy.context.scene
-                render_settings = bpy.context.scene.render.image_settings
-
-                # A. 备份
-                old_file_format = render_settings.file_format
-                old_color_mode = render_settings.color_mode
-                old_depth = render_settings.color_depth
-
-                # B. 设置
-                ext = os.path.splitext(new_full_path)[1].lower()
-                if ext in ['.jpg', '.jpeg']:
-                    render_settings.file_format = 'JPEG'
-                    render_settings.color_mode = 'RGB'
-                elif ext == '.png':
-                    render_settings.file_format = 'PNG'
-                    render_settings.color_mode = 'RGBA'
-
-                try:
-                    # C. 保存
-                    img.save_render(filepath=new_full_path)
-                finally:
-                    # D. 还原
-                    render_settings.file_format = old_file_format
-                    render_settings.color_mode = old_color_mode
-                    render_settings.color_depth = old_depth
-                # ========================================================
-
-                # 3. 重连
-                img.filepath = new_full_path
-                img.reload()
-
-        except Exception as e:
-            print(f"Error processing {img.name}: {e}")
+        render = bpy.context.scene.render.image_settings
+        old_fmt = render.file_format
+        old_mode = render.color_mode
+        
+        try:
+            ext = os.path.splitext(new_full_path)[1].lower()
+            if ext in {'.jpg', '.jpeg'}:
+                render.file_format = 'JPEG'
+                render.color_mode = 'RGB'
+            elif ext == '.png':
+                render.file_format = 'PNG'
+                render.color_mode = 'RGBA' # 确保透明
+            img.save_render(filepath=new_full_path)
+        finally:
+            render.file_format = old_fmt
+            render.color_mode = old_mode
+            
+        img.filepath = new_full_path
+        img.reload()
 
     def finish(self, context):
-        """结束清理"""
         context.window_manager.event_timer_remove(self._timer)
         context.window_manager.progress_end()
-        
         bpy.ops.tot.updateimagelist()
 
-        print("[TOT] Running Orphan Purge...")
-        for _ in range(3):  # 运行几次以确保级联引用的都被清掉
-            # 这里使用 outliner.orphans_purge 是假设你的 Blender 版本支持此操作符
-            # 如果你的版本不支持，可能需要手动调用 bpy.data.purge_unused_data()
-            try:
-                bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
-            except AttributeError:
-                # 如果操作符不存在，尝试使用 data.purge_unused_data
-                if hasattr(bpy.data, 'purge_unused_data'):
-                    bpy.data.purge_unused_data()
-                break
-        # 强制回收 Python 层的垃圾内存
+        # Purge
+        try:
+            bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+        except: pass
+        
         gc.collect()
-        # 强制刷新 UI
-        for area in context.screen.areas:
-            area.tag_redraw()
+        for area in context.screen.areas: area.tag_redraw()
             
         self.report({'INFO'}, f"Camera Optimization Complete! Processed {self._processed} textures.")
-
     def cancel(self, context):
         context.window_manager.event_timer_remove(self._timer)
         context.window_manager.progress_end()
