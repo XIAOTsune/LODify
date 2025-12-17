@@ -1,9 +1,10 @@
-  
+<div align="center">
+
   <h1>🚀 LODify</h1>
   
   <h3>The Blender Performance Savior | Blender 性能救星</h3>
   <p>
-    <b>LOD Edition v3.0</b> • <i>Async Core</i> • <i>Screen Coverage Algorithm</i>
+    <b>LOD Edition v3.0</b> • <i>Async Core</i> • <i>Screen Coverage Algorithm</i> • <i>Turbo Ready</i>
   </p>
 
   <p>
@@ -14,7 +15,7 @@
       <img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg?style=for-the-badge" alt="License">
     </a>
     <a href="https://github.com/XIAOTsune/LODify/releases">
-      <img src="https://img.shields.io/badge/Release-v3.0-green.svg?style=for-the-badge" alt="Download">
+      <img src="https://img.shields.io/badge/Download-v3.0-green.svg?style=for-the-badge" alt="Download">
     </a>
   </p>
 
@@ -24,270 +25,227 @@
     👇 <b>选择语言 / Select Language</b> 👇
   </p>
   <p>
-    <a href="#-cn-中文介绍让你的-blender-飞起来">🇨🇳 中文介绍</a> • 
-    <a href="#-us-english-version-unchain-your-viewport">🇺🇸 English Version</a>
+    <a href="#-cn-中文介绍">🇨🇳 中文介绍 (及加速教程)</a> • 
+    <a href="#-us-english-version">🇺🇸 English Version (Turbo Mode Guide)</a>
   </p>
 </div>
 
 <br>
 <hr>
 
-<a name="-cn-中文介绍让你的-blender-飞起来"></a>
+<a name="-cn-中文介绍"></a>
 
-#  让你的 Blender 飞起来！
+# 让你的 Blender 飞起来！
 
-> **"受够了点击‘优化’后界面卡死、转圈圈、甚至白屏崩溃？"** > **"受够了单纯按‘距离’减面，长焦一拉远景全变马赛克？"**
+**LODify** 是一套工业级的 Blender 场景优化解决方案。我们引入了**异步时间片技术**和**屏幕占比算法**，解决了大场景优化时 Blender 界面卡死、显存爆炸的痛点。
 
-**LODify (Blender优化工具)** 就是为了结束这一切而生的！这不是一个简单的脚本，这是一套**工业级、非破坏性、永不卡顿**的场景优化解决方案。我们把 3A 游戏引擎的核心优化逻辑搬进了 Blender！
-
-**最新版本大幅优化了缩放贴图速度，大幅优化贴图优化效果，大幅优化了减面效果。赶紧下载来试试吧！**
+> **v3.0 核心更新：** 大幅优化了贴图缩放算法速度，改进了减面拓扑效果，并支持一键应用（Apply）几何节点以便快速导出到游戏引擎。
 
 <br>
 
-## 🔥 核心卖点：为什么它无可替代？
+## 🚀 必读：如何开启 5-10 倍速“极速模式”？
 
-### 1. ⚡ 革命性的“零阻塞”异步核心 (Async Core)
-**别再让 Blender 假死了！** LODify 采用了先进的 `时间片（Time-Slicing）技术`。
-* 哪怕你有 **10,000 个物体** 需要计算 LOD；
-* 哪怕你要批量缩放 **500 张 8K 贴图**；
-* 你的界面 **永远是活的**！你可以看着进度条丝般顺滑地滚动，随时可以按 `ESC` 叫停。这就是 2025 年该有的体验！
+LODify 默认使用**原生模式**，无需安装任何库即可流畅运行。但如果你需要处理 **数百张 4K/8K 贴图**，强烈建议开启 **极速模式 (Turbo Mode)** 以激活多线程并行加速。
 
-### 2. 🧠 降维打击：屏幕占比算法 (Screen Coverage)
-**忘掉落后的“距离法”吧！** 传统的 LOD 只看距离，简直是长焦镜头的噩梦。LODify 引入了 **屏幕占比算法**：
-* 它将物体投影到 2D 屏幕空间，计算它在画面里到底占了几个像素。
-* **只有当它在画面里真的变小了，我们才减面。**
-* 无论广角还是长焦，画质与性能的完美平衡，**所见即所得**！
+**开启步骤 (仅需操作一次)：**
 
-### 3. 🛡️ 几何节点流：硬表面守护神
-**拒绝一键毁模型！** 我们不使用破坏性的 Decimate 修改器。LODify 会动态构建一套智能的 **Geometry Nodes (几何节点)**。
-* ✅ 识别 **锐利的边缘** 和 **倒角**，死死护住你的模型轮廓。
-* ✅ 只对平坦的、无关紧要的面进行“核打击”。
-* ✅ 全程 **非破坏性**，随时调整参数，随时反悔！
+1.  **以管理员身份运行 Blender**：
+    * **普通版**：右键 Blender 图标 -> 选择“以管理员身份运行”。
+    * **Steam 版**：在库中右键 Blender -> 管理 -> 浏览本地文件 -> 右键 `blender.exe` -> 以管理员运行。
+2.  进入顶部 **Scripting (脚本)** 工作区。
+3.  新建一个文本，**复制粘贴**下方代码，点击 **运行 (Run Script)** 按钮。
+4.  等待控制台显示成功后，**重启 Blender** 即可。
 
-### 4. 📸 资产管理的“后悔药”
-* **智能缓存**：贴图缩放过一次？第二次运行 **0秒完成**！它记得一切。
-* **时光倒流**：优化视窗显示（线框/隐藏）前，它会自动拍摄 **状态快照**。无论你折腾多少次，一键 Reset，所有物体乖乖回到你最初设置的样子。
+```python
+import subprocess, sys
 
+# 自动安装加速库 (使用清华源加速下载)
+print("🚀 正在安装极速模式依赖 (Pillow)...")
 
-<img width="912" height="810" alt="1" src="https://github.com/user-attachments/assets/1d2fd224-30ec-4ae1-ab53-754950d93dd6" width="300"/>
+cmds = [
+    # 方案 A: 全局安装
+    [sys.executable, "-m", "pip", "install", "pillow", "-i", "[https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)"],
+    # 方案 B: 用户目录安装 (备用)
+    [sys.executable, "-m", "pip", "install", "pillow", "--user", "-i", "[https://pypi.tuna.tsinghua.edu.cn/simple](https://pypi.tuna.tsinghua.edu.cn/simple)"]
+]
 
-<img width="884" height="845" alt="2" src="https://github.com/user-attachments/assets/24bd17cf-e9b0-4b8e-81ab-6145f0b2171d" width="300"/>
+success = False
+for cmd in cmds:
+    try:
+        subprocess.check_call(cmd)
+        print("\n✅ 成功！极速模式已激活，重启 Blender 后 LODify 将获得 5-10 倍加速！")
+        success = True
+        break
+    except Exception:
+        continue
 
-<img width="894" height="709" alt="3" src="https://github.com/user-attachments/assets/7819a88d-2074-47c2-b547-cb6a4d35212c" width="300"/>
+if not success:
+    print("\n❌ 安装失败。请确保您是以【管理员身份】运行的 Blender 且网络连接正常。")
+🔥 核心功能
+1. ⚡ 永不卡顿的异步核心 (Async Core)
+别再忍受点击优化后的“白屏”和“无响应”。LODify 采用 时间片 (Time-Slicing) 技术，即使在处理上万个物体或数百张贴图时，你的界面依然可以自由操作。
 
-<img width="891" height="265" alt="4" src="https://github.com/user-attachments/assets/a1fcaf6d-b58e-4fe2-9482-83b4fafa0e0b" width="300"/>
+2. 🧠 屏幕占比算法 (Screen Coverage)
+传统的“距离法”已过时。LODify 实时计算物体在画面中的像素占比：只有物体在镜头里真的变小了，才会降低精度。完美适配广角与长焦镜头，真正做到“所见即所得”。
 
+3. 🛡️ 智能几何节点流 (支持 Apply)
+使用非破坏性的 Geometry Nodes 代替原始的减面修改器：
 
+智能护边：保护锐利边缘、倒角与轮廓不崩坏。
 
-<br>
+一键固化：支持一键 Apply (应用) 结果，将程序化模型转为普通网格，方便导出 FBX/GLTF。
 
-## 🛠️ 如何安装
+4. 📸 资产管理的“后悔药”
+智能快照：优化视窗显示（线框/隐藏）前自动保存状态，一键还原，绝不弄乱你的源文件。
 
-1. 在本页面的 [Releases](https://github.com/XIAOTsune/LODify/releases) 下载最新的 `.zip` 文件。
-2. 打开 Blender，顶部菜单 `Edit` -> `Preferences` -> `Get Extensions`。
-3. 点击右上角箭头 -> `Install from Disk...` 选择压缩包即可。
+智能缓存：缩放过的贴图会被自动记录，第二次运行实现“瞬时”优化。
 
-<br>
-<br>
-<hr>
+🛠️ 安装方法
+在本页面的 Releases 下载最新的 .zip 文件。
 
-<a name="-us-english-version-unchain-your-viewport"></a>
+打开 Blender，顶部菜单 Edit -> Preferences -> Get Extensions。
 
-# 🇺🇸 US: Unchain Your Viewport!
+点击右上角箭头 -> Install from Disk... 选择下载的压缩包。
 
-> **"Sick of Blender freezing, hanging, or crashing when you try to optimize a scene?"** > **"Tired of 'Distance-based' LOD ruining your telephoto shots?"**
+<a name="-us-english-version"></a>
 
-Meet **LODify**. This isn't just a script; it's a **pro-grade, non-blocking, non-destructive** optimization suite. We brought AAA game engine optimization logic directly into Blender!
+🇺🇸 US: Unchain Your Viewport!
+LODify is a pro-grade optimization suite for Blender. Powered by Async Time-Slicing and Screen Coverage Algorithms, it solves the UI freezing and VRAM overflow issues in complex scenes.
 
-<br>
+v3.0 Highlights: Significantly faster texture resizing, improved decimation topology, and "Apply to Mesh" support for game engine export.
 
-## 🔥 Killer Features
+🚀 PRO TIP: Unlock "Turbo Mode" (5x-10x Speed)
+By default, LODify runs in Native Mode (Zero dependencies). However, for heavy scenes with hundreds of textures, we highly recommend unlocking Turbo Mode to enable multi-threaded parallel processing.
 
-### 1. ⚡ The "Zero-Freeze" Async Engine
-**Stop waiting for the spinning wheel of death.** Powered by `Async Modal Operators` and Time-Slicing tech.
-* Process **10,000 objects** for LOD updates?
-* Batch resize **500 textures**?
-* Your UI remains **100% responsive**. Watch the real-time progress bar glide smoothly. Cancel anytime. 
+How to Enable (One-time setup):
 
-### 2. 🧠 Smart Algorithm: Screen Coverage LOD
-**Distance-based LOD is obsolete.** LODify projects every object's bounding box into 2D screen space to calculate its actual **Pixel Ratio**.
-* We only decimate mesh when it *actually* occupies less screen space.
-* Perfect details for both wide-angle and telephoto lenses. **What you see is what you optimize.**
+Run Blender as Administrator (Right-click -> Run as Administrator).
 
-### 3. 🛡️ Geometry Nodes: The Hard-Surface Guardian
-**Don't ruin your topology.** Instead of the destructive Decimate modifier, LODify dynamically builds a smart **Geometry Nodes** graph.
-* ✅ It intelligently protects **sharp edges** and **silhouettes**.
-* ✅ It aggressively reduces flat surfaces.
-* ✅ **Non-Destructive**: Tweak parameters or revert changes anytime!
+For Steam users: Right-click Blender in Library -> Manage -> Browse local files -> Right-click blender.exe -> Run as Admin.
 
-### 4. 📸 Smart Asset Management
-* **Smart Caching**: Resizing textures? LODify checks for existing optimized files. Re-runs are **instant**.
-* **Snapshot Reset**: Before optimizing the viewport (Wire/Bounds), it takes a **Snapshot** of your original state. Reset anytime, and your scene returns exactly to how you left it—no data loss.
+Go to the Scripting tab in Blender.
 
-<br>
+Create a new text block, paste the script below, and click Run Script.
 
-## 🛠️ Installation
+Restart Blender.
 
-1. Download the latest `.zip` from [Releases](https://github.com/XIAOTsune/LODify/releases).
-2. Open Blender `Edit` -> `Preferences` -> `Get Extensions`.
-3. Click the arrow icon (top right) -> `Install from Disk...` and select the zip file.
+Python
 
-<br>
-<hr>
+import subprocess, sys
 
-<div align="center">
-  <p>
-    <b>Developed with ❤️ for the Blender Community</b><br>
-    <i>Open Source under GPL-3.0-or-later</i>
-  </p>
-  <p>
-    <a href="https://github.com/XIAOTsune/LODify/issues">Report Bug</a> • 
-    <a href="https://github.com/XIAOTsune/LODify/pulls">Contribute</a>
-  </p>
-</div>
+# Auto-install Turbo Mode dependencies (Pillow)
+print("🚀 Installing Turbo Mode dependencies...")
 
-  
-  <h1>🚀 LODify</h1>
-  
-  <h3>The Blender Performance Savior | Blender 性能救星</h3>
-  <p>
-    <b>LOD Edition v3.0</b> • <i>Async Core</i> • <i>Screen Coverage Algorithm</i>
-  </p>
+cmds = [
+    [sys.executable, "-m", "pip", "install", "pillow"],
+    [sys.executable, "-m", "pip", "install", "pillow", "--user"]
+]
 
-  <p>
-    <a href="https://www.blender.org/">
-      <img src="https://img.shields.io/badge/Blender-4.2%2B%20%7C%205.0-orange?logo=blender&style=for-the-badge" alt="Blender Version">
-    </a>
-    <a href="LICENSE">
-      <img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg?style=for-the-badge" alt="License">
-    </a>
-    <a href="https://github.com/XIAOTsune/LODify/releases">
-      <img src="https://img.shields.io/badge/Release-v3.0-green.svg?style=for-the-badge" alt="Download">
-    </a>
-  </p>
+success = False
+for cmd in cmds:
+    try:
+        subprocess.check_call(cmd)
+        print("\n✅ SUCCESS! Turbo Mode activated. Restart Blender to enjoy 5x-10x speed boost!")
+        success = True
+        break
+    except Exception:
+        continue
 
-  <br>
-  
-  <p>
-    👇 <b>选择语言 / Select Language</b> 👇
-  </p>
-  <p>
-    <a href="#-cn-中文介绍让你的-blender-飞起来">🇨🇳 中文介绍</a> • 
-    <a href="#-us-english-version-unchain-your-viewport">🇺🇸 English Version</a>
-  </p>
-</div>
+if not success:
+    print(f"\n❌ Error: Installation failed. Please ensure you are running Blender as Administrator.")
+🔥 Key Features
+1. ⚡ The "Zero-Freeze" Async Core
+Stop waiting for the spinning wheel of death. Our Time-Slicing tech ensures your UI remains 100% responsive even during massive batch operations. Cancel anytime with ESC.
 
-<br>
-<hr>
+2. 🧠 Smart Algorithm: Screen Coverage LOD
+Distance-based LOD is obsolete. LODify projects every object into 2D screen space to calculate its actual Pixel Ratio. What you see is exactly what gets optimized.
 
-<a name="-cn-中文介绍让你的-blender-飞起来"></a>
+3. 🛡️ Geometry Nodes Guardian (Export Ready)
+LODify dynamically builds smart Geometry Nodes instead of destructive modifiers:
 
-#  让你的 Blender 飞起来！
+Edge Protection: Intelligently preserves sharp edges and silhouettes.
 
-> **"受够了点击‘优化’后界面卡死、转圈圈、甚至白屏崩溃？"** > **"受够了单纯按‘距离’减面，长焦一拉远景全变马赛克？"**
+Non-Destructive: Tweak or revert anytime.
 
-**LODify (Blender优化工具)** 就是为了结束这一切而生的！这不是一个简单的脚本，这是一套**工业级、非破坏性、永不卡顿**的场景优化解决方案。我们把 3A 游戏引擎的核心优化逻辑搬进了 Blender！
+Bake Support: One-click Apply to bake procedural optimizations into mesh for game engine exports.
 
-<br>
+4. 📸 Asset Management & Snapshot
+Smart Caching: Texture resizing is instant if already processed.
 
-## 🔥 核心卖点：为什么它无可替代？
+Snapshot Reset: Automatically takes a snapshot of your original scene state before viewport optimization. Revert anytime with no data loss.
 
-### 1. ⚡ 革命性的“零阻塞”异步核心 (Async Core)
-**别再让 Blender 假死了！** LODify 采用了先进的 `时间片（Time-Slicing）技术`。
-* 哪怕你有 **10,000 个物体** 需要计算 LOD；
-* 哪怕你要批量缩放 **500 张 8K 贴图**；
-* 你的界面 **永远是活的**！你可以看着进度条丝般顺滑地滚动，随时可以按 `ESC` 叫停。这就是 2025 年该有的体验！
+🛠️ Installation
+Download the latest .zip from Releases.
 
-### 2. 🧠 降维打击：屏幕占比算法 (Screen Coverage)
-**忘掉落后的“距离法”吧！** 传统的 LOD 只看距离，简直是长焦镜头的噩梦。LODify 引入了 **屏幕占比算法**：
-* 它将物体投影到 2D 屏幕空间，计算它在画面里到底占了几个像素。
-* **只有当它在画面里真的变小了，我们才减面。**
-* 无论广角还是长焦，画质与性能的完美平衡，**所见即所得**！
+Open Blender Edit -> Preferences -> Get Extensions.
 
-### 3. 🛡️ 几何节点流：硬表面守护神
-**拒绝一键毁模型！** 我们不使用破坏性的 Decimate 修改器。LODify 会动态构建一套智能的 **Geometry Nodes (几何节点)**。
-* ✅ 识别 **锐利的边缘** 和 **倒角**，死死护住你的模型轮廓。
-* ✅ 只对平坦的、无关紧要的面进行“核打击”。
-* ✅ 全程 **非破坏性**，随时调整参数，随时反悔！
+Click the arrow icon (top right) -> Install from Disk... and select the zip file.
 
-### 4. 📸 资产管理的“后悔药”
-* **智能缓存**：贴图缩放过一次？第二次运行 **0秒完成**！它记得一切。
-* **时光倒流**：优化视窗显示（线框/隐藏）前，它会自动拍摄 **状态快照**。无论你折腾多少次，一键 Reset，所有物体乖乖回到你最初设置的样子。
+<div align="center"> <p> <b>Developed with ❤️ for the Blender Community</b>
 
 
-<img width="912" height="810" alt="1" src="https://github.com/user-attachments/assets/1d2fd224-30ec-4ae1-ab53-754950d93dd6" width="300"/>
 
-<img width="884" height="845" alt="2" src="https://github.com/user-attachments/assets/24bd17cf-e9b0-4b8e-81ab-6145f0b2171d" width="300"/>
 
-<img width="894" height="709" alt="3" src="https://github.com/user-attachments/assets/7819a88d-2074-47c2-b547-cb6a4d35212c" width="300"/>
+🛠️ LODify 核心功能详解 | Feature Deep Dive
+1. ⚡ 异步调度内核 (Async & Multi-threading)
+LODify 彻底解决了 Blender 插件在处理大数据量时的“假死”痛点。
 
-<img width="891" height="265" alt="4" src="https://github.com/user-attachments/assets/a1fcaf6d-b58e-4fe2-9482-83b4fafa0e0b" width="300"/>
+混合动力架构：自动检测环境，若安装 Pillow 库则启用 真·多线程 (Multi-threading) 并行加速；若无，则自动回退至 时间分片 (Time-Slicing) 异步调度。
 
+非阻塞交互：无论后台是在缩放 300 张贴图还是计算 10,000 个物体的 LOD，Blender 界面始终保持 60FPS 响应。你可以随时旋转视图、调整参数，甚至按 ESC 键安全终止任务。
 
+2. 🧠 智能屏幕占比算法 (Screen Coverage LOD)
+区别于传统的、基于绝对距离的优化，LODify 采用类似 Unreal Engine 5 的屏幕占比逻辑。
 
-<br>
+像素级评估：通过将物体的包围盒投影至当前相机的 2D 屏幕空间，精确计算物体在最终画面中所占的像素比例。
 
-## 🛠️ 如何安装
+透视自适应：自动适配广角与长焦镜头。长焦拉近时，即使距离很远，插件也会识别到物体占据了大量像素从而保留高精度，避免了传统优化中“远景模糊”的尴尬。
 
-1. 在本页面的 [Releases](https://github.com/YourUsername/LODify/releases) 下载最新的 `.zip` 文件。
-2. 打开 Blender，顶部菜单 `Edit` -> `Preferences` -> `Get Extensions`。
-3. 点击右上角箭头 -> `Install from Disk...` 选择压缩包即可。
+优化由感性转理性：插件会根据计算结果自动匹配最合适的贴图分辨率（如：仅占 100 像素的物体不需要 4K 贴图）。
 
-<br>
-<br>
-<hr>
+3. 🛡️ 几何节点 LOD 系统 (Procedural Geometry Nodes)
+放弃破坏性的 Decimate 修改器，LODify 构建了一套基于 Geometry Nodes 的动态减面管线。
 
-<a name="-us-english-version-unchain-your-viewport"></a>
+边缘保护算法：节点组内部集成了边缘检测，能够自动识别并锁定模型的 锐利边缘 (Sharp Edges) 和 轮廓线 (Silhouettes)，仅对平坦区域进行塌陷。
 
-# 🇺🇸 US: Unchain Your Viewport!
+距离感应塌陷：随着物体离开相机，模型面数会平滑降低，且支持自定义过渡曲线。
 
-> **"Sick of Blender freezing, hanging, or crashing when you try to optimize a scene?"** > **"Tired of 'Distance-based' LOD ruining your telephoto shots?"**
+一键固化 (Apply to Mesh)：专为游戏导出设计，可一键将程序化减面结果“烘焙”为真实网格。
 
-Meet **LODify**. This isn't just a script; it's a **pro-grade, non-blocking, non-destructive** optimization suite. We brought AAA game engine optimization logic directly into Blender!
+4. 📸 资产管理与快照 (Asset & Viewport Management)
+针对大型场景资产混乱的问题，提供了一套非破坏性的管理方案。
 
-<br>
+状态快照 (Snapshot)：在进行视窗优化（改变物体显示为线框/包围盒）前，插件会自动记录所有物体的原始状态。用户可以反复试验，随时一键重置。
 
-## 🔥 Killer Features
+贴图智能缓存：贴图缩放过程会生成专属缓存，二次运行无需重新计算，实现“零秒”加载。
 
-### 1. ⚡ The "Zero-Freeze" Async Engine
-**Stop waiting for the spinning wheel of death.** Powered by `Async Modal Operators` and Time-Slicing tech.
-* Process **10,000 objects** for LOD updates?
-* Batch resize **500 textures**?
-* Your UI remains **100% responsive**. Watch the real-time progress bar glide smoothly. Cancel anytime. 
+冗余清理：一键扫描并清理场景中因为反复导入产生的 .001、.002 冗余贴图数据块，压缩项目体积。
 
-### 2. 🧠 Smart Algorithm: Screen Coverage LOD
-**Distance-based LOD is obsolete.** LODify projects every object's bounding box into 2D screen space to calculate its actual **Pixel Ratio**.
-* We only decimate mesh when it *actually* occupies less screen space.
-* Perfect details for both wide-angle and telephoto lenses. **What you see is what you optimize.**
+5. 📊 深度分析器 (Diagnostics)
+在优化前，先看清性能瓶颈。
 
-### 3. 🛡️ Geometry Nodes: The Hard-Surface Guardian
-**Don't ruin your topology.** Instead of the destructive Decimate modifier, LODify dynamically builds a smart **Geometry Nodes** graph.
-* ✅ It intelligently protects **sharp edges** and **silhouettes**.
-* ✅ It aggressively reduces flat surfaces.
-* ✅ **Non-Destructive**: Tweak parameters or revert changes anytime!
+集合分析 (Collection Analyzer)：递归扫描集合，列出最消耗显存的“显存杀手”。
 
-### 4. 📸 Smart Asset Management
-* **Smart Caching**: Resizing textures? LODify checks for existing optimized files. Re-runs are **instant**.
-* **Snapshot Reset**: Before optimizing the viewport (Wire/Bounds), it takes a **Snapshot** of your original state. Reset anytime, and your scene returns exactly to how you left it—no data loss.
+视窗分析 (Viewport Analyzer)：基于实时视窗状态，高亮显示面数异常的对象，让优化有的放矢。
 
-<br>
+🇬🇧 Technical Features (English)
+🚀 Async Performance Engine
+LODify features a sophisticated Time-Slicing scheduler combined with Optional Threading. It prevents Blender from freezing during heavy I/O or geometry operations, maintaining a responsive UI and allowing real-time cancellation.
 
-## 🛠️ Installation
+📐 Pixel-Perfect Screen Coverage
+Utilizing Screen Space Projection to determine LOD levels. Instead of simple distance, LODify calculates the object's pixel density in the current camera view, ensuring visual fidelity even with extreme focal lengths.
 
-1. Download the latest `.zip` from [Releases](https://github.com/XIAOTsune/LODify/releases).
-2. Open Blender `Edit` -> `Preferences` -> `Get Extensions`.
-3. Click the arrow icon (top right) -> `Install from Disk...` and select the zip file.
+🔗 Non-Destructive Geo-Nodes Pipeline
+Unlike standard decimation, LODify generates a Procedural Geometry Node Tree.
 
-<br>
-<hr>
+Silhouette Preservation: Intelligently locks sharp edges and boundary loops.
 
-<div align="center">
-  <p>
-    <b>Developed with ❤️ for the Blender Community</b><br>
-    <i>Open Source under GPL-3.0-or-later</i>
-  </p>
-  <p>
-    <a href="https://github.com/XIAOTsune/LODify/issues">Report Bug</a> • 
-    <a href="https://github.com/XIAOTsune/LODify/pulls">Contribute</a>
-  </p>
-</div>
+Bake-Ready: Includes a dedicated operator to "Apply" procedural results to static meshes for FBX/GLTF export.
+
+📦 Asset Integrity & Snapshot
+Viewport Snapshot: Takes a "memory photo" of your scene before optimization, allowing for 100% reversible workflows.
+
+Smart Texture Deduplication: Scans and merges redundant image data-blocks created by repeated appending.
+
+
+<i>Open Source under GPL-3.0-or-later</i> </p> <p> <a href="https://github.com/XIAOTsune/LODify/issues">Report Bug</a> • <a href="https://github.com/XIAOTsune/LODify/pulls">Contribute</a> </p> </div>
