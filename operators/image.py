@@ -25,6 +25,9 @@ class TOT_OT_UpdateImageList(bpy.types.Operator):
         total_size_mb = 0.0
         count = 0
         
+        # --- 1. 创建临时列表用于收集数据 ---
+        temp_data_list = []
+
         for img in bpy.data.images:
             if img.name in {'Render Result', 'Viewer Node'}: continue
             if img.source == 'GENERATED': continue
@@ -37,20 +40,46 @@ class TOT_OT_UpdateImageList(bpy.types.Operator):
                         break
             if is_world_tex: continue
 
-            item = scn.image_list.add()
-            item.tot_image_name = img.name
-            
-            if img.packed_file:
-                item.packed_img = 1 # Packed
-            elif img.library:
-                item.packed_img = 2 # Linked
-            else:
-                item.packed_img = 0 # File
-            
+            # 提前计算大小
             size_str = utils.get_image_size_str(img)
-            item.image_size = size_str
-            total_size_mb += float(size_str)
+            try:
+                size_float = float(size_str)
+            except:
+                size_float = 0.0
+            
+            total_size_mb += size_float
             count += 1
+            
+            # 将数据存入临时字典
+            img_data = {
+                "obj": img,
+                "size_str": size_str,
+                "size_float": size_float,
+                "packed_status": 0
+            }
+            
+            # 预先判断打包状态
+            if img.packed_file:
+                img_data["packed_status"] = 1 # Packed
+            elif img.library:
+                img_data["packed_status"] = 2 # Linked
+            else:
+                img_data["packed_status"] = 0 # File
+                
+            temp_data_list.append(img_data)
+            
+        # --- 2. 核心修改：按 size_float 降序排序 ---
+        # key: 指定排序依据, reverse=True: 降序 (大 -> 小)
+        temp_data_list.sort(key=lambda x: x["size_float"], reverse=True)
+
+        # --- 3. 将排序后的数据填入 UI 列表 ---
+        for data in temp_data_list:
+            item = scn.image_list.add()
+            item.tot_image_name = data["obj"].name
+            item.image_size = data["size_str"]
+            item.packed_img = data["packed_status"]
+            # 默认为 False，保持未选中状态
+            item.image_selected = False 
             
         scn.r_total_images = count
         scn.total_image_memory = f"{total_size_mb:.2f}"
