@@ -863,12 +863,19 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
 
         ABSOLUTE_MIN_FLOOR = 32
         image_res_map = {}
-        
+        #获取实例源黑名单
+        instance_sources = utils.get_instance_sources(context.scene)
+
         # 获取所有可见网格
         mesh_objs = [o for o in context.scene.objects if o.type == 'MESH' and not o.hide_render]
 
 
         for obj in mesh_objs:
+            # 如果是实例母体，直接跳过分析
+            # 这意味着它的贴图不会被缩小，保留原图（或者如果你希望它被视为全高清，可以手动处理，但跳过最安全）
+            if obj in instance_sources:
+                print(f"[TOT] Skipping texture opt for instance source: {obj.name}")
+                continue
             # 计算物体在屏幕上的像素大小
             px_size, visible = utils.calculate_screen_coverage(context.scene, obj, cam)
             

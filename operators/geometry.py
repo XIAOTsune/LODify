@@ -245,12 +245,20 @@ class TOT_OT_GeoLODSetup(bpy.types.Operator):
             except Exception as e:
                 self.report({'ERROR'}, f"Create Node Error: {e}")
                 return {'CANCELLED'}
-        
+        # [新增] 1.1 预先计算实例源黑名单
+        self.instance_sources = utils.get_instance_sources(context.scene)
+        if self.instance_sources:
+             print(f"[TOT] Detected {len(self.instance_sources)} instance source objects. They will be skipped.")
+      
         # 2. 构建任务队列
         self._queue = []
         # 遍历场景所有物体
         for obj in context.scene.objects:
             if obj.type != 'MESH': continue
+
+            #  如果是实例源，跳过优化（保护母体）
+            if obj in self.instance_sources:
+                continue            
             # 面数过滤
             if self.min_faces > 0 and len(obj.data.polygons) < self.min_faces: continue
             
@@ -366,9 +374,16 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
         method = scn.geo_lod_method
         target_mod = DECIMATE_MOD_NAME if method == 'DECIMATE' else GEO_NODES_MOD_NAME
         
+        # 获取黑名单
+        skipped_sources = utils.get_instance_sources(context.scene)   
+
         self._queue = []
         for obj in context.scene.objects:
             if obj.type == 'MESH' and not obj.hide_viewport:
+                # 如果是实例源就跳过计算
+                if obj in skipped_sources:
+                    continue
+
                 if obj.modifiers.get(target_mod):
                     self._queue.append(obj)
         

@@ -134,3 +134,52 @@ def format_large_number(num):
         return f"{num/1000:.1f}K"
     else:
         return str(num)
+    
+    # ... (保留原有的引用和函数) ...
+
+def get_instance_sources(scene):
+    """
+    扫描场景，找出所有被用作“实例源”的物体。
+    包括：粒子系统的发射物体、几何节点中引用的物体/集合。
+    """
+    sources = set()
+    
+    # 遍历场景中所有物体进行检查
+    for obj in scene.objects:
+        
+        # 1. 检查粒子系统 (Particle Systems)
+        if len(obj.particle_systems) > 0:
+            for ps in obj.particle_systems:
+                settings = ps.settings
+                # 物体模式
+                if settings.render_type == 'OBJECT' and settings.instance_object:
+                    sources.add(settings.instance_object)
+                # 集合模式
+                elif settings.render_type == 'COLLECTION' and settings.instance_collection:
+                    for member in settings.instance_collection.all_objects:
+                        sources.add(member)
+
+        # 2. 检查几何节点 (Geometry Nodes)
+        # 注意：这需要遍历节点树，可能会有一点点慢，但在 Setup 阶段是可以接受的
+        for mod in obj.modifiers:
+            if mod.type == 'NODES' and mod.node_group:
+                try:
+                    # 遍历节点寻找 Object Info 和 Collection Info
+                    for node in mod.node_group.nodes:
+                        # Object Info 节点
+                        if node.type == 'OBJECT_INFO':
+                            # 输入接口通常第一个是 Object
+                            target = node.inputs[0].default_value 
+                            if target:
+                                sources.add(target)
+                        
+                        # Collection Info 节点
+                        elif node.type == 'COLLECTION_INFO':
+                            target_col = node.inputs[0].default_value
+                            if target_col:
+                                for member in target_col.all_objects:
+                                    sources.add(member)
+                except:
+                    pass
+                    
+    return sources
