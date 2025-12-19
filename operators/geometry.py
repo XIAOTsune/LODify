@@ -497,59 +497,142 @@ class TOT_OT_GeoLODReset(bpy.types.Operator):
         self.report({'INFO'}, f"Reset {removed} objects.")
         return {'FINISHED'}
 
-class TOT_OT_GeoLODApply(bpy.types.Operator):
-    bl_idname = "tot.geo_lod_apply"
-    bl_label = "Apply (Destructive)"
+class TOT_OT_GeoLODApplyAsync(bpy.types.Operator):
+    """异步批量应用 LOD 修改器 (防止界面卡死)"""
+    bl_idname = "tot.geo_lod_apply_async"
+    bl_label = "Apply (Destructive) Async"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
+    _timer = None
+    _queue = []
+    _total_tasks = 0
+    _processed = 0
+    _applied_count = 0
+    
+    # 时间预算：每帧只允许占用 0.05秒，超过则留到下一帧处理
+    TIME_BUDGET = 0.05 
+    
+    # 记录原始激活物体，以便结束后恢复
+    _original_active_name = None 
+    _target_mod_name = ""
+
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            # 如果队列为空，完成
+            if not self._queue:
+                return self.finish(context)
+            
+            start_time = time.time()
+            
+            # --- 时间片循环 ---
+            while self._queue:
+                obj = self._queue.pop(0)
+                
+                try:
+                    self.process_object(context, obj)
+                except Exception as e:
+                    print(f"Apply Error on {obj.name}: {e}")
+                
+                self._processed += 1
+                
+                # 超时检查：把控制权还给 UI
+                if (time.time() - start_time) > self.TIME_BUDGET:
+                    break
+            
+            # 更新进度条
+            context.window_manager.progress_update(self._processed)
+            
+        return {'PASS_THROUGH'}
+
+    def invoke(self, context, event):
         scn = context.scene.tot_props
-        # 确定要应用哪个修改器名字
-        target_mod_name = "TOT_LOD_DECIMATE" if scn.geo_lod_method == 'DECIMATE' else "TOT_GEO_LOD"
-
-        applied_count = 0
-
-        # 必须在 Object 模式下才能应用修改器
+        
+        # 1. 确定要应用哪个修改器名字
+        self._target_mod_name = DECIMATE_MOD_NAME if scn.geo_lod_method == 'DECIMATE' else GEO_NODES_MOD_NAME
+        
+        # 2. 必须切换到 Object 模式
         if context.object and context.object.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
+            
+        # 记录当前的激活物体，以便最后恢复
+        if context.view_layer.objects.active:
+            self._original_active_name = context.view_layer.objects.active.name
 
-        # 获取当前选中的物体，或者处理全场景？
-        # 通常 Apply 操作是对当前选中的物体，或者是全场景带有该修改器的物体
-        # 既然是批量工具，建议处理全场景带有该修改器的物体
-
-        # 备份当前激活物体
-        original_active = context.view_layer.objects.active
-
+        # 3. 构建任务队列
+        self._queue = []
+        
+        # 遍历场景所有物体，寻找含有目标修改器的 Mesh
         for obj in context.scene.objects:
             if obj.type != 'MESH': continue
+            if obj.hide_viewport: continue # 跳过隐藏物体，因为 apply 需要物体可见
 
-            mod = obj.modifiers.get(target_mod_name)
+            mod = obj.modifiers.get(self._target_mod_name)
             if mod:
-                # Blender API 限制：应用修改器必须让该物体成为“Active”
-                context.view_layer.objects.active = obj
-                try:
-                    bpy.ops.object.modifier_apply(modifier=target_mod_name)
+                self._queue.append(obj)
 
-                    # 清理标记
-                    if "_tot_geo_lod_created" in obj:
-                        del obj["_tot_geo_lod_created"]
+        if not self._queue:
+            self.report({'WARNING'}, f"No objects found with modifier: {self._target_mod_name}")
+            return {'CANCELLED'}
 
-                    applied_count += 1
-                except Exception as e:
-                    print(f"Failed to apply for {obj.name}: {e}")
+        # 4. 初始化状态
+        self._total_tasks = len(self._queue)
+        self._processed = 0
+        self._applied_count = 0
+        
+        context.window_manager.progress_begin(0, self._total_tasks)
+        self._timer = context.window_manager.event_timer_add(0.01, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        
+        self.report({'INFO'}, f"Starting Apply for {self._total_tasks} objects...")
+        return {'RUNNING_MODAL'}
 
-        # 恢复之前的激活物体
-        if original_active:
-            context.view_layer.objects.active = original_active
+    def process_object(self, context, obj):
+        """处理单个物体：激活 -> 应用 -> 清理标记"""
+        
+        # Blender API 限制：bpy.ops.object.modifier_apply 必须针对 "Active Object" 操作
+        # 所以我们需要在后台悄悄切换激活物体
+        
+        # 1. 强制设为激活物体
+        context.view_layer.objects.active = obj
+        
+        # 2. 应用修改器
+        # 注意：使用 modifier_apply 可能会比较慢，但在异步循环中是可以接受的
+        mod = obj.modifiers.get(self._target_mod_name)
+        if mod:
+            try:
+                bpy.ops.object.modifier_apply(modifier=self._target_mod_name)
+                
+                # 3. 清理自定义属性标记
+                if "_tot_geo_lod_created" in obj:
+                    del obj["_tot_geo_lod_created"]
+                    
+                self._applied_count += 1
+            except Exception as e:
+                print(f"Failed to apply modifier for {obj.name}: {e}")
 
-        self.report({'INFO'}, f"Applied modifiers on {applied_count} objects.")
+    def finish(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
+        
+        # 恢复原始激活物体
+        if self._original_active_name:
+            orig_obj = context.scene.objects.get(self._original_active_name)
+            if orig_obj:
+                context.view_layer.objects.active = orig_obj
+        
+        # 强制刷新视图
+        for win in context.window_manager.windows:
+            for area in win.screen.areas:
+                if area.type == 'VIEW_3D': area.tag_redraw()
+                
+        self.report({'INFO'}, f"Applied modifiers on {self._applied_count} objects.")
         return {'FINISHED'}
 
 classes = (
     TOT_OT_GeoLODSetup,
     TOT_OT_GeoLODUpdateAsync,
     TOT_OT_GeoLODReset,
-    TOT_OT_GeoLODApply,
+    TOT_OT_GeoLODApplyAsync,
 )
 
 def register():

@@ -319,7 +319,7 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
             row.scale_y = 1.2
             row.alert = True 
             op_text = tr("Apply Decimate (Destructive)") if scn.geo_lod_method == 'DECIMATE' else tr("Apply GeoNodes (Destructive)")
-            row.operator("tot.geo_lod_apply", text=op_text, icon="CHECKMARK")
+            row.operator("tot.geo_lod_apply_async", text=op_text, icon="CHECKMARK")
 # 5. 去除重复贴图 (Duplicate Remover)
 class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
     bl_label = "5. Clean Up & Storage"
