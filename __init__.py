@@ -1,7 +1,7 @@
 import bpy
 import os
 
-ADDON_WEBSITE_URL = "https://space.bilibili.com/23411160" # 默认值
+ADDON_WEBSITE_URL = "https://github.com/XIAOTsune/LODify" # 默认值
 AUTHOR_NAME = "小T_sune" # 你想要显示在标题栏的名字
 
 from . import properties
@@ -48,7 +48,7 @@ bl_info = {
     "location": "View3D > Sidebar > Optimize",
     "description": "全场景性能优化：贴图、减面与视窗管理",
     "warning": "",
-    "doc_url": "https://space.bilibili.com/23411160",
+    "doc_url": "https://github.com/XIAOTsune/LODify",
     "category": "3D View",
 }
 

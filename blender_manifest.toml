@@ -1,39 +1,24 @@
 schema_version = "1.0.0"
 
-# 扩展 ID (只能包含小写字母、数字和下划线)
-id = "lodify_3d"
-version = "3.0.0"
+id = "lodify_optimizer"
+version = "2.0.1"
 name = "LODify"
 tagline = "全场景性能优化：贴图、减面与视窗管理"
 maintainer = "小T_sune"
 type = "add-on"
+website = "https://github.com/XIAOTsune/LODify"
 
-# 可选：文档或主页链接
-website = "https://space.bilibili.com/23411160"
 
-# 标签列表
-tags = ["3D View", "Optimization", "LOD", "Game Engine"]
+# Blender 插件通常使用 GPL-2.0-or-later 协议
+license = ["SPDX:GPL-3.0-or-later"]
 
-# 最低 Blender 版本
+tags = ["3D View"]
 blender_version_min = "4.2.0"
 
-# 许可证：必须是列表格式，且包含 SPDX 前缀
-license = [
-  "SPDX:GPL-3.0-or-later",
-]
-
-# 权限声明
-# 因为你的插件会创建 "textures_xxx" 文件夹并写入图片，
-# 声明 files 权限并通过审核的概率更高，也更符合规范。
 [permissions]
-files = "Save optimized textures and generate folders in the project directory"
 
-# 构建设置
+files = "用于读写贴图文件以进行缩放处理"
+network = "仅用于打开在线文档"
+
 [build]
-paths_exclude_pattern = [
-  "/__pycache__/",
-  "/.git/",
-  "/.vscode/",
-  "/*.zip",
-  "/*.blend",
-]
+paths = ["."]
