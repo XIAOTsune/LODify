@@ -9,6 +9,8 @@ from . import ui
 from . import operators
 from . import i18n
 
+
+
 try:
     import tomllib
 except ImportError:
@@ -62,6 +64,7 @@ modules = [
     operators.image, 
     operators.viewport,
     operators.geometry,
+    operators.shader_lod,
     operators, 
 ]
 

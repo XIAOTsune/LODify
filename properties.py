@@ -4,6 +4,7 @@ from bpy.props import (
     EnumProperty, CollectionProperty, PointerProperty
 )
 
+
 # --- 数据项类 (Collection Items) ---
 class TOT_ImageItem(bpy.types.PropertyGroup):
     tot_image_name: StringProperty()
@@ -140,6 +141,28 @@ class TOT_Props(bpy.types.PropertyGroup):
         max=100.0,     # 给一个足够大的上限，应对巨型场景
         description="极远处合并半径：距离越远，合并范围越大 (值越大减面越狠)"
     )    
+
+    # ==========================================================
+    # 5. 实验性功能：Shader LOD (Shader Detail)
+    # ==========================================================
+    exp_shader_lod_enabled: BoolProperty(
+        name="Enable Shader LOD",
+        description="根据距离动态降低法线和置换强度",
+        default=False,
+    )
+    
+    # 法线强度乘数 (LOD 0 默认为 1.0 即原始强度)
+    exp_normal_mult_1: FloatProperty(name="L1 Normal %", default=0.7, min=0.0, max=1.0, subtype='FACTOR')
+    exp_normal_mult_2: FloatProperty(name="L2 Normal %", default=0.3, min=0.0, max=1.0, subtype='FACTOR')
+    exp_normal_mult_3: FloatProperty(name="L3 Normal %", default=0.0, min=0.0, max=1.0, subtype='FACTOR') # 极远处完全关闭法线
+
+    # 置换强度乘数
+    exp_disp_mult_1: FloatProperty(name="L1 Disp %", default=0.5, min=0.0, max=1.0, subtype='FACTOR')
+    exp_disp_mult_2: FloatProperty(name="L2 Disp %", default=0.0, min=0.0, max=1.0, subtype='FACTOR') # 远距离通常不需要置换
+    exp_disp_mult_3: FloatProperty(name="L3 Disp %", default=0.0, min=0.0, max=1.0, subtype='FACTOR')    
+
+
+
 # 注册列表
 classes = (
     TOT_ImageItem,

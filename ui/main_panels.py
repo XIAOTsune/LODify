@@ -375,13 +375,56 @@ class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
                     op = row.operator("tot.delete_texture_folder", text="", icon='X')
                     op.folder_name = folder
 
+
+
+# 6. 实验性功能面板
+class TOT_PT_Experimental(TOT_PT_MainPanel, bpy.types.Panel):
+    bl_label = "6. Experimental Features"
+    bl_idname = "TOT_PT_Experimental"
+    bl_order = 6
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.label(text="Experimental Features")
+
+    def draw(self, context):
+        layout = self.layout
+        scn = context.scene.tot_props
+        
+        # Shader LOD 区域
+        box_lod = layout.box()
+        row = box_lod.row()
+        row.label(text="Shader Detail LOD", icon='SHADING_RENDERED')
+        row.prop(scn, "exp_shader_lod_enabled", text="Enable", toggle=True)
+        
+        if scn.exp_shader_lod_enabled:
+            col = box_lod.column(align=True)
+            col.label(text="Normal Map Strength Multipliers:", icon='NODE_MATERIAL')
+            def draw_mult_row(layout, label, prop_name):
+                row = layout.row(align=True)
+                row.label(text=label); row.prop(scn, prop_name, text="")
+            draw_mult_row(col, "LOD 1 (Mid):", "exp_normal_mult_1")
+            draw_mult_row(col, "LOD 2 (Low):", "exp_normal_mult_2")
+            draw_mult_row(col, "LOD 3 (Far):", "exp_normal_mult_3")
+            col.separator()
+            col.label(text="Displacement Scale Multipliers:", icon='MOD_DISPLACE')
+            draw_mult_row(col, "LOD 1 (Mid):", "exp_disp_mult_1")
+            draw_mult_row(col, "LOD 2 (Low):", "exp_disp_mult_2")
+            draw_mult_row(col, "LOD 3 (Far):", "exp_disp_mult_3")
+            col.separator()
+            row = col.row(align=True); row.scale_y = 1.2
+            row.operator("tot.shader_lod_update_async", text="Update Shaders", icon='PLAY')
+            row.operator("tot.shader_lod_reset", text="Reset", icon='LOOP_BACK')
+
+        
 classes = (
     TOT_PT_Header,
     TOT_PT_CollectionAnalyzer,
     TOT_PT_ViewAnalyzer,
     TOT_PT_ImageResizer,
     TOT_PT_LODManager,
-    TOT_PT_DuplicateRemover
+    TOT_PT_DuplicateRemover,
+    TOT_PT_Experimental,
 )
 
 def register():
