@@ -87,7 +87,7 @@ class TOT_OT_ViewportLODUpdate(bpy.types.Operator):
             
             # 应用属性
             obj.display_type = final_display
-            [cite_start]obj.hide_viewport = should_hide_by_lod or orig_is_hidden [cite: 260]
+            obj.hide_viewport = should_hide_by_lod or orig_is_hidden
             
             count += 1
             
