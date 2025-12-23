@@ -23,7 +23,7 @@ def ensure_lod_node_group():
     """
     创建/更新 LOD 节点组 (Geometry Nodes) - V3 空间塌陷版 (修复兼容性)
     """
-    name = "TOT_GEO_LOD_Advanced" 
+    name = "LOD_GEO_LOD_Advanced" 
     group = bpy.data.node_groups.get(name)
     
     if not group:
@@ -161,7 +161,7 @@ def ensure_lod_node_group():
             if sel_socket:
                 links.new(n_compare.outputs[0], sel_socket)
         except Exception as e:
-            print(f"TOT Warning: Could not connect selection logic: {e}")
+            print(f"LOD Warning: Could not connect selection logic: {e}")
             pass
 
     return group
@@ -184,9 +184,9 @@ def get_input_identifier(node_group, input_name):
 # Operators
 # =============================================================================
 
-class TOT_OT_GeoLODSetup(bpy.types.Operator):
+class LOD_OT_GeoLODSetup(bpy.types.Operator):
     """Setup Geometry LOD Modifiers (Async Version)"""
-    bl_idname = "tot.geo_lod_setup"
+    bl_idname = "lod.geo_lod_setup"
     bl_label = "Setup Modifiers"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -229,7 +229,7 @@ class TOT_OT_GeoLODSetup(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         self.method = scn.geo_lod_method
         self.min_faces = scn.geo_lod_min_faces
         self.max_dist = scn.geo_lod_max_dist
@@ -248,7 +248,7 @@ class TOT_OT_GeoLODSetup(bpy.types.Operator):
         # [新增] 1.1 预先计算实例源黑名单
         self.instance_sources = utils.get_instance_sources(context.scene)
         if self.instance_sources:
-             print(f"[TOT] Detected {len(self.instance_sources)} instance source objects. They will be skipped.")
+             print(f"[LOD] Detected {len(self.instance_sources)} instance source objects. They will be skipped.")
       
         # 2. 构建任务队列
         self._queue = []
@@ -293,7 +293,7 @@ class TOT_OT_GeoLODSetup(bpy.types.Operator):
                 mod = obj.modifiers.new(DECIMATE_MOD_NAME, 'DECIMATE')
                 mod.decimate_type = 'COLLAPSE'
                 mod.ratio = 1.0 # 初始设为 1.0，防止刚加上去模型就消失
-                obj["_tot_geo_lod_created"] = True
+                obj["_lod_geo_lod_created"] = True
                 self._created_count += 1
                 
         elif self.method == 'GNODES':
@@ -305,7 +305,7 @@ class TOT_OT_GeoLODSetup(bpy.types.Operator):
             force_rebuild = False
             
             # 检查是否使用了旧版节点组
-            if mod and mod.node_group and mod.node_group.name != "TOT_GEO_LOD_Advanced":
+            if mod and mod.node_group and mod.node_group.name != "LOD_GEO_LOD_Advanced":
                 force_rebuild = True
             # 检查接口数量
             if mod and mod.node_group and self.lod_group and \
@@ -316,7 +316,7 @@ class TOT_OT_GeoLODSetup(bpy.types.Operator):
                 if mod: obj.modifiers.remove(mod)
                 mod = obj.modifiers.new(name=GEO_NODES_MOD_NAME, type='NODES')
                 mod.node_group = self.lod_group
-                obj["_tot_geo_lod_created"] = True
+                obj["_lod_geo_lod_created"] = True
                 self._created_count += 1
             
             # 初始化参数
@@ -335,11 +335,11 @@ class TOT_OT_GeoLODSetup(bpy.types.Operator):
         self.report({'INFO'}, f"Setup complete: {self._created_count} modifiers updated/created.")
         return {'FINISHED'}
 
-class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
+class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
     """
     现在 Python 只需要计算 Factor，无需计算 Angle
     """
-    bl_idname = "tot.geo_lod_update_async"
+    bl_idname = "lod.geo_lod_update_async"
     bl_label = "Update Geometry (Async)"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -364,7 +364,7 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         if not scn.geo_lod_enabled: return {'CANCELLED'}
         self.cam = scn.lod_camera or context.scene.camera
         if not self.cam: 
@@ -405,7 +405,7 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
         self.gn_id_dist = None
         
         if method == 'GNODES':
-            group = bpy.data.node_groups.get("TOT_GEO_LOD_Advanced")
+            group = bpy.data.node_groups.get("LOD_GEO_LOD_Advanced")
             self.gn_id_factor = get_input_identifier(group, GN_INPUT_FACTOR)
             self.gn_id_dist = get_input_identifier(group, GN_INPUT_MAX_DIST)
 
@@ -481,9 +481,9 @@ class TOT_OT_GeoLODUpdateAsync(bpy.types.Operator):
                 if area.type == 'VIEW_3D': area.tag_redraw()
         self.report({'INFO'}, f"Updated {self._updated_count} objects.")
         return {'FINISHED'}
-    
-class TOT_OT_GeoLODReset(bpy.types.Operator):
-    bl_idname = "tot.geo_lod_reset"
+
+class LOD_OT_GeoLODReset(bpy.types.Operator):
+    bl_idname = "lod.geo_lod_reset"
     bl_label = "Reset Geometry"
     bl_options = {'REGISTER', 'UNDO'}
     def execute(self, context):
@@ -493,13 +493,13 @@ class TOT_OT_GeoLODReset(bpy.types.Operator):
                 obj.modifiers.remove(obj.modifiers.get(DECIMATE_MOD_NAME)); removed+=1
             if obj.modifiers.get(GEO_NODES_MOD_NAME): 
                 obj.modifiers.remove(obj.modifiers.get(GEO_NODES_MOD_NAME)); removed+=1
-            if "_tot_geo_lod_created" in obj: del obj["_tot_geo_lod_created"]
+            if "_lod_geo_lod_created" in obj: del obj["_lod_geo_lod_created"]
         self.report({'INFO'}, f"Reset {removed} objects.")
         return {'FINISHED'}
 
-class TOT_OT_GeoLODApplyAsync(bpy.types.Operator):
+class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
     """异步批量应用 LOD 修改器 (防止界面卡死)"""
-    bl_idname = "tot.geo_lod_apply_async"
+    bl_idname = "lod.geo_lod_apply_async"
     bl_label = "Apply (Destructive) Async"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -545,7 +545,7 @@ class TOT_OT_GeoLODApplyAsync(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         # 1. 确定要应用哪个修改器名字
         self._target_mod_name = DECIMATE_MOD_NAME if scn.geo_lod_method == 'DECIMATE' else GEO_NODES_MOD_NAME
@@ -603,8 +603,8 @@ class TOT_OT_GeoLODApplyAsync(bpy.types.Operator):
                 bpy.ops.object.modifier_apply(modifier=self._target_mod_name)
                 
                 # 3. 清理自定义属性标记
-                if "_tot_geo_lod_created" in obj:
-                    del obj["_tot_geo_lod_created"]
+                if "_lod_geo_lod_created" in obj:
+                    del obj["_lod_geo_lod_created"]
                     
                 self._applied_count += 1
             except Exception as e:
@@ -629,10 +629,10 @@ class TOT_OT_GeoLODApplyAsync(bpy.types.Operator):
         return {'FINISHED'}
 
 classes = (
-    TOT_OT_GeoLODSetup,
-    TOT_OT_GeoLODUpdateAsync,
-    TOT_OT_GeoLODReset,
-    TOT_OT_GeoLODApplyAsync,
+    LOD_OT_GeoLODSetup,
+    LOD_OT_GeoLODUpdateAsync,
+    LOD_OT_GeoLODReset,
+    LOD_OT_GeoLODApplyAsync,
 )
 
 def register():

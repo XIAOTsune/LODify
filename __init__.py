@@ -1,6 +1,17 @@
 import bpy
 import os
 
+# =============================================================================
+# Acknowledgements / 致谢
+# =============================================================================
+# Core analysis concepts and UI layout inspired by "ToOptimize Tools" by Rodrigo Gama.
+# This plugin (LODify) is a derivative work that refactors the codebase and introduces 
+# new features such as Geometry Nodes integration, Async processing, and Camera Optimization.
+# 核心分析逻辑与UI布局参考了 Rodrigo Gama 的 "ToOptimize Tools"。
+# 本插件 (LODify) 在此基础上进行了重构，并新增了几何节点集成、异步处理及相机优化等功能。
+# =============================================================================
+
+
 ADDON_WEBSITE_URL = "https://github.com/XIAOTsune/LODify" # 默认值
 AUTHOR_NAME = "小T_sune" # 你想要显示在标题栏的名字
 
@@ -37,7 +48,7 @@ def load_manifest_info():
                     ADDON_WEBSITE_URL = data["information"]["website"]
                 # 也可以顺便读取 maintainer 或 name
         except Exception as e:
-            print(f"TOT Warning: Could not read manifest: {e}")
+            print(f"LOD Warning: Could not read manifest: {e}")
 
 
 # --- 1. 兼容 Legacy Add-on (Blender < 4.2) ---
@@ -90,5 +101,5 @@ def unregister():
             pass # 强制继续卸载下一个模块
 
     # 清理可能残留的属性 (防止下次加载报错)
-    if hasattr(bpy.types.Scene, "tot_props"):
-        del bpy.types.Scene.tot_props
+    if hasattr(bpy.types.Scene, "lod_props"):
+        del bpy.types.Scene.lod_props

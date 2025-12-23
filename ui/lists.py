@@ -1,6 +1,6 @@
 import bpy
 
-class TOT_UL_ImageStats(bpy.types.UIList):
+class LOD_UL_ImageStats(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         # 绘制列表的每一行
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
@@ -11,7 +11,7 @@ class TOT_UL_ImageStats(bpy.types.UIList):
             
             # 图片名
             split = row.split(factor=0.6)
-            split.label(text=item.tot_image_name, icon='IMAGE_DATA')
+            split.label(text=item.lod_image_name, icon='IMAGE_DATA')
             
             # 状态图标 (打包/链接)
             r = split.row()
@@ -28,7 +28,7 @@ class TOT_UL_ImageStats(bpy.types.UIList):
             layout.label(text="", icon='IMAGE_DATA')
 
 def register():
-    bpy.utils.register_class(TOT_UL_ImageStats)
+    bpy.utils.register_class(LOD_UL_ImageStats)
 
 def unregister():
-    bpy.utils.unregister_class(TOT_UL_ImageStats)
+    bpy.utils.unregister_class(LOD_UL_ImageStats)

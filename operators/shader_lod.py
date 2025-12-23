@@ -2,9 +2,9 @@ import bpy
 import time
 from mathutils import Vector
 
-class TOT_OT_ShaderLODUpdateAsync(bpy.types.Operator):
+class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
     """异步更新材质 Shader 细节 (法线/置换)"""
-    bl_idname = "tot.shader_lod_update_async"
+    bl_idname = "lod.shader_lod_update_async"
     bl_label = "Update Shader LOD (Async)"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -44,7 +44,7 @@ class TOT_OT_ShaderLODUpdateAsync(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         if not scn.exp_shader_lod_enabled:
             self.report({'WARNING'}, "Enable 'Shader LOD' first.")
             return {'CANCELLED'}
@@ -130,13 +130,13 @@ class TOT_OT_ShaderLODUpdateAsync(bpy.types.Operator):
                         
                         # [优化] 2. 只有当原始值大于 0 时才处理 (本来就是0就没必要算了)
                         # 第一次读取时存档
-                        if "tot_orig_val" not in node:
+                        if "lod_orig_val" not in node:
                             if socket.default_value <= 0.001: # 原始值极小，视为无效
                                 continue
-                            node["tot_orig_val"] = socket.default_value
+                            node["lod_orig_val"] = socket.default_value
                         
                         # 2. 计算新值
-                        orig_val = node["tot_orig_val"]
+                        orig_val = node["lod_orig_val"]
                         new_val = orig_val * target_n_mult
                         
                         # 3. 应用 (减少不必要的 update_tag 调用)
@@ -156,12 +156,12 @@ class TOT_OT_ShaderLODUpdateAsync(bpy.types.Operator):
                     socket = node.inputs.get('Scale')
                     if socket and not socket.is_linked:
                         
-                        if "tot_orig_val" not in node:
+                        if "lod_orig_val" not in node:
                             if socket.default_value <= 0.001:
                                 continue
-                            node["tot_orig_val"] = socket.default_value
+                            node["lod_orig_val"] = socket.default_value
                         
-                        orig_val = node["tot_orig_val"]
+                        orig_val = node["lod_orig_val"]
                         new_val = orig_val * target_d_mult
                         
                         if abs(socket.default_value - new_val) > 0.001:
@@ -178,9 +178,9 @@ class TOT_OT_ShaderLODUpdateAsync(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class TOT_OT_ShaderLODReset(bpy.types.Operator):
+class LOD_OT_ShaderLODReset(bpy.types.Operator):
     """恢复材质原始参数"""
-    bl_idname = "tot.shader_lod_reset"
+    bl_idname = "lod.shader_lod_reset"
     bl_label = "Reset Shader Parameters"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -190,25 +190,25 @@ class TOT_OT_ShaderLODReset(bpy.types.Operator):
             if not mat.use_nodes or not mat.node_tree: continue
             
             for node in mat.node_tree.nodes:
-                if "tot_orig_val" in node:
+                if "lod_orig_val" in node:
                     # 恢复数值
                     if node.type == 'NORMAL_MAP':
                         if not node.inputs['Strength'].is_linked:
-                            node.inputs['Strength'].default_value = node["tot_orig_val"]
+                            node.inputs['Strength'].default_value = node["lod_orig_val"]
                     elif node.type == 'DISPLACEMENT':
                         if not node.inputs['Scale'].is_linked:
-                            node.inputs['Scale'].default_value = node["tot_orig_val"]
+                            node.inputs['Scale'].default_value = node["lod_orig_val"]
                     
                     # 移除标记 (可选，或者保留以便下次用)
-                    # del node["tot_orig_val"] 
+                    # del node["lod_orig_val"] 
                     count += 1
                     
         self.report({'INFO'}, f"Reset {count} shader nodes to original values.")
         return {'FINISHED'}
 
 classes = (
-    TOT_OT_ShaderLODUpdateAsync,
-    TOT_OT_ShaderLODReset,
+    LOD_OT_ShaderLODUpdateAsync,
+    LOD_OT_ShaderLODReset,
 )
 
 def register():

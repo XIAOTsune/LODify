@@ -3,21 +3,21 @@ import os
 from ..i18n import tr
 from .. import AUTHOR_NAME
 
-class TOT_PT_MainPanel:
+class LOD_PT_MainPanel:
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Optimize" 
     bl_options = {'DEFAULT_CLOSED'}
 #0. 顶部 Header与语言切换 面板
-class TOT_PT_Header(TOT_PT_MainPanel, bpy.types.Panel):
+class LOD_PT_Header(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "" # 不显示默认标题，我们自己画
-    bl_idname = "TOT_PT_Header"
+    bl_idname = "LOD_PT_Header"
     bl_order = 0  # 排序第一
     bl_options = {'HIDE_HEADER'} # 隐藏折叠箭头，看起来像纯 UI 栏
 
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
 
         # 创建一行
         row = layout.row(align=True)
@@ -34,7 +34,7 @@ class TOT_PT_Header(TOT_PT_MainPanel, bpy.types.Panel):
         
         # 这里的 icon 可以选 'URL', 'WORLD', 'COMMUNITY', 'User' 等
         # text 显示你的名字
-        op = row.operator("tot.open_website", text=AUTHOR_NAME, icon='COMMUNITY', emboss=False)
+        op = row.operator("lod.open_website", text=AUTHOR_NAME, icon='COMMUNITY', emboss=False)
         
         # 右侧：语言切换按钮 (expand=True 会把 Enum 显示为按钮组)
         row.prop(scn, "language", expand=True)
@@ -42,9 +42,9 @@ class TOT_PT_Header(TOT_PT_MainPanel, bpy.types.Panel):
         layout.separator()
 
 # 1. 集合分析器 (Collection Analyzer)
-class TOT_PT_CollectionAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
+class LOD_PT_CollectionAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "1. Collection Analyzer"
-    bl_idname = "TOT_PT_CollectionAnalyzer"
+    bl_idname = "LOD_PT_CollectionAnalyzer"
     bl_order = 1 # 排序权重
 
     #动态修改面板标题
@@ -53,7 +53,7 @@ class TOT_PT_CollectionAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         layout.prop(scn, "colA_Method", text=tr("Method"))
         
@@ -75,15 +75,15 @@ class TOT_PT_CollectionAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
         
         # Toggle 按钮逻辑
         if not scn.CA_Toggle:
-            row.operator("tot.collectionanalyzer", text="Run Analyzer", icon='PLAY')
+            row.operator("lod.collectionanalyzer", text="Run Analyzer", icon='PLAY')
         else:
-            row.operator("tot.cleancolors", text="Clear Analyzer", icon='X')
-            row.operator("tot.collectionanalyzer", text="", icon='FILE_REFRESH') # 刷新按钮
+            row.operator("lod.cleancolors", text="Clear Analyzer", icon='X')
+            row.operator("lod.collectionanalyzer", text="", icon='FILE_REFRESH') # 刷新按钮
 
 # 2. 视图分析器 (View Analyzer)
-class TOT_PT_ViewAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
+class LOD_PT_ViewAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "2. View Analyzer"
-    bl_idname = "TOT_PT_ViewAnalyzer"
+    bl_idname = "LOD_PT_ViewAnalyzer"
     bl_order = 2
 
     def draw_header(self, context):
@@ -91,21 +91,21 @@ class TOT_PT_ViewAnalyzer(TOT_PT_MainPanel, bpy.types.Panel):
         
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         layout.label(text=tr("View Analyzer"), icon='SCENE_DATA')
         
         row = layout.row(align=True)
         row.scale_y = 1.2
         if not scn.AA_Toggle:
-            row.operator("tot.viewanalyzer", text=tr("Run Analyzer"), icon='PLAY')
+            row.operator("lod.viewanalyzer", text=tr("Run Analyzer"), icon='PLAY')
         else:
-            row.operator("tot.cleanviewanalyzer", text=tr("Clear Analyzer"), icon='X')
+            row.operator("lod.cleanviewanalyzer", text=tr("Clear Analyzer"), icon='X')
 
 # 3. 贴图列表与缩放 (Image Resizer)
-class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
+class LOD_PT_ImageResizer(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "3. Image Resizer"
-    bl_idname = "TOT_PT_ImageResizer"
+    bl_idname = "LOD_PT_ImageResizer"
     bl_order = 3
 
     def draw_header(self, context):
@@ -113,12 +113,12 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         # 扫描按钮
         row = layout.row()
         row.scale_y = 1.2
-        row.operator("tot.updateimagelist", text=tr("Scan / Refresh Images"), icon='FILE_REFRESH')
+        row.operator("lod.updateimagelist", text=tr("Scan / Refresh Images"), icon='FILE_REFRESH')
         
         # 统计信息
         if scn.r_total_images > 0:
@@ -128,11 +128,11 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
             r.label(text=f"{tr('Mem')}: {scn.total_image_memory} MB")
         
         # 列表
-        layout.template_list("TOT_UL_ImageStats", "", scn, "image_list", scn, "custom_index_image_list", rows=5)
+        layout.template_list("LOD_UL_ImageStats", "", scn, "image_list", scn, "custom_index_image_list", rows=5)
         
         # 选择工具
         row = layout.row(align=True)
-        row.operator("tot.imglistselectall", text=tr("Select All/None"), icon='CHECKBOX_HLT')
+        row.operator("lod.imglistselectall", text=tr("Select All/None"), icon='CHECKBOX_HLT')
         
         layout.separator()
         layout.label(text="Resize Options:", icon='TOOL_SETTINGS')
@@ -150,7 +150,7 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         # 执行缩放
         row = layout.row()
         row.scale_y = 1.4
-        row.operator("tot.resizeimages_async", text=tr("Resize Selected Images"), icon='IMAGE_DATA')
+        row.operator("lod.resizeimages_async", text=tr("Resize Selected Images"), icon='IMAGE_DATA')
 
         layout.separator()
         box_cam = layout.box()
@@ -158,7 +158,7 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         col = box_cam.column(align=True)
         col.label(text=tr("Auto-calculate size based on screen coverage"), icon='INFO')
         # 按钮
-        col.operator("tot.optimize_by_camera", text=tr("Run Camera Optimization"), icon='SHADING_RENDERED')
+        col.operator("lod.optimize_by_camera", text=tr("Run Camera Optimization"), icon='SHADING_RENDERED')
 
         # 分辨率切换器 (Texture Switcher) ---
         layout.separator()
@@ -170,7 +170,7 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         row.scale_y = 1.2
         
         # 1. 原图按钮
-        op = row.operator("tot.switch_resolution", text=tr("Original"), icon='FILE_IMAGE')
+        op = row.operator("lod.switch_resolution", text=tr("Original"), icon='FILE_IMAGE')
         op.target_res = "ORIGINAL"
         
         # 2. 动态检测已生成的文件夹，并生成对应的切换按钮
@@ -178,7 +178,7 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         base_path = bpy.path.abspath("//")
         # 2.1 检测 Camera Optimized 文件夹并显示按钮
         if base_path and os.path.exists(os.path.join(base_path, "textures_camera_optimized")):
-            op = row.operator("tot.switch_resolution", text=tr("Auto-Opt"), icon='CAMERA_DATA')
+            op = row.operator("lod.switch_resolution", text=tr("Auto-Opt"), icon='CAMERA_DATA')
             op.target_res = "camera_optimized" # 传给 Operator 的特殊字符串
 
         found_resolutions = []
@@ -196,15 +196,15 @@ class TOT_PT_ImageResizer(TOT_PT_MainPanel, bpy.types.Panel):
         
         if found_resolutions:
             for res in found_resolutions:
-                op = row.operator("tot.switch_resolution", text=f"{res}px")
+                op = row.operator("lod.switch_resolution", text=f"{res}px")
                 op.target_res = res
         else:
             row.label(text="(No resized sets found)")
 
 # 4. LOD层级管理 (LOD Manager)
-class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
+class LOD_PT_LODManager(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "4. LOD Manager"
-    bl_idname = "TOT_PT_LODManager"
+    bl_idname = "LOD_PT_LODManager"
     bl_order = 4
 
     def draw_header(self, context):
@@ -212,7 +212,7 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         # ==========================================================
         # Part A: 基础设置 (相机 & 距离阈值)
@@ -262,8 +262,8 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
             # 操作按钮
             r = box.row(align=True)
             r.scale_y = 1.2
-            r.operator("tot.viewport_lod_update", text=tr("Update View"), icon='FILE_REFRESH')
-            r.operator("tot.viewport_lod_reset", text=tr("Reset"), icon='X')
+            r.operator("lod.viewport_lod_update", text=tr("Update View"), icon='FILE_REFRESH')
+            r.operator("lod.viewport_lod_reset", text=tr("Reset"), icon='X')
 
         # ==========================================================
         # Part C: 模型几何优化 (Geometry LOD - Screen Coverage)
@@ -307,23 +307,23 @@ class TOT_PT_LODManager(TOT_PT_MainPanel, bpy.types.Panel):
             # 3. 三大核心按钮 (只保留这一个区域，删除原来的重复块)
             row = box.row(align=True)
             row.scale_y = 1.2
-            row.operator("tot.geo_lod_setup", text=tr("Setup Modifiers"), icon="MODIFIER")
+            row.operator("lod.geo_lod_setup", text=tr("Setup Modifiers"), icon="MODIFIER")
             
             # 使用 Async Update (防止卡顿)
-            row.operator("tot.geo_lod_update_async", text=tr("Update Geometry (Async)"), icon="PLAY")
+            row.operator("lod.geo_lod_update_async", text=tr("Update Geometry (Async)"), icon="PLAY")
             
-            row.operator("tot.geo_lod_reset", text=tr("Reset Geometry"), icon="FILE_REFRESH")   
+            row.operator("lod.geo_lod_reset", text=tr("Reset Geometry"), icon="FILE_REFRESH")   
             
             # 4. Apply 按钮
             row = box.row()
             row.scale_y = 1.2
             row.alert = True 
             op_text = tr("Apply Decimate (Destructive)") if scn.geo_lod_method == 'DECIMATE' else tr("Apply GeoNodes (Destructive)")
-            row.operator("tot.geo_lod_apply_async", text=op_text, icon="CHECKMARK")
+            row.operator("lod.geo_lod_apply_async", text=op_text, icon="CHECKMARK")
 # 5. 去除重复贴图 (Duplicate Remover)
-class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
+class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "5. Clean Up & Storage"
-    bl_idname = "TOT_PT_DuplicateRemover"
+    bl_idname = "LOD_PT_DuplicateRemover"
     bl_order = 5
     
     def draw_header(self, context):
@@ -331,13 +331,13 @@ class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         # ... (Data Cleanup 部分保持不变) ...
         box = layout.box()
         box.label(text=tr("Data Cleanup"), icon='BRUSH_DATA')
         col = box.column(align=True)
-        col.operator("tot.clearduplicateimage", text=tr("Merge Duplicate Images (.001)"), icon='TRASH')
+        col.operator("lod.clearduplicateimage", text=tr("Merge Duplicate Images (.001)"), icon='TRASH')
 
         # --- 外部文件夹管理 (修复版) ---
         box = layout.box()
@@ -372,15 +372,15 @@ class TOT_PT_DuplicateRemover(TOT_PT_MainPanel, bpy.types.Panel):
                     # 文件夹图标 + 名字
                     row.label(text=folder, icon='FOLDER_REDIRECT')
                     # 删除按钮
-                    op = row.operator("tot.delete_texture_folder", text="", icon='X')
+                    op = row.operator("lod.delete_texture_folder", text="", icon='X')
                     op.folder_name = folder
 
 
 
 # 6. 实验性功能面板
-class TOT_PT_Experimental(TOT_PT_MainPanel, bpy.types.Panel):
+class LOD_PT_Experimental(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "6. Experimental Features"
-    bl_idname = "TOT_PT_Experimental"
+    bl_idname = "LOD_PT_Experimental"
     bl_order = 6
     bl_options = {'DEFAULT_CLOSED'}
 
@@ -389,7 +389,7 @@ class TOT_PT_Experimental(TOT_PT_MainPanel, bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         # Shader LOD 区域
         box_lod = layout.box()
@@ -413,18 +413,18 @@ class TOT_PT_Experimental(TOT_PT_MainPanel, bpy.types.Panel):
             draw_mult_row(col, "LOD 3 (Far):", "exp_disp_mult_3")
             col.separator()
             row = col.row(align=True); row.scale_y = 1.2
-            row.operator("tot.shader_lod_update_async", text="Update Shaders", icon='PLAY')
-            row.operator("tot.shader_lod_reset", text="Reset", icon='LOOP_BACK')
+            row.operator("lod.shader_lod_update_async", text="Update Shaders", icon='PLAY')
+            row.operator("lod.shader_lod_reset", text="Reset", icon='LOOP_BACK')
 
         
 classes = (
-    TOT_PT_Header,
-    TOT_PT_CollectionAnalyzer,
-    TOT_PT_ViewAnalyzer,
-    TOT_PT_ImageResizer,
-    TOT_PT_LODManager,
-    TOT_PT_DuplicateRemover,
-    TOT_PT_Experimental,
+    LOD_PT_Header,
+    LOD_PT_CollectionAnalyzer,
+    LOD_PT_ViewAnalyzer,
+    LOD_PT_ImageResizer,
+    LOD_PT_LODManager,
+    LOD_PT_DuplicateRemover,
+    LOD_PT_Experimental,
 )
 
 def register():

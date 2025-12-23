@@ -2,17 +2,17 @@ import bpy
 from .. import utils
 import webbrowser
 
-class TOT_OT_CollectionAnalyzer(bpy.types.Operator):
+class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
     """根据顶点数标记集合颜色并显示百分比"""
-    bl_idname = "tot.collectionanalyzer"
+    bl_idname = "lod.collectionanalyzer"
     bl_label = "Run Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         # 1. 强制清理旧状态
-        bpy.ops.tot.cleancolors()
+        bpy.ops.lod.cleancolors()
 
         self.report({'INFO'}, "Analyzing Collections...")
         
@@ -75,14 +75,14 @@ class TOT_OT_CollectionAnalyzer(bpy.types.Operator):
         scn.CA_Toggle = True 
         return {'FINISHED'}
 
-class TOT_OT_CleanColors(bpy.types.Operator):
+class LOD_OT_CleanColors(bpy.types.Operator):
     """恢复集合名称和颜色"""
-    bl_idname = "tot.cleancolors"
+    bl_idname = "lod.cleancolors"
     bl_label = "Clear Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         # 读取备份
         data = {}
@@ -106,11 +106,11 @@ class TOT_OT_CleanColors(bpy.types.Operator):
         return {'FINISHED'}
 
 # ... (ViewAnalyzer Code stays roughly the same) ...
-class TOT_OT_ViewAnalyzer(bpy.types.Operator):
-    bl_idname = "tot.viewanalyzer"
+class LOD_OT_ViewAnalyzer(bpy.types.Operator):
+    bl_idname = "lod.viewanalyzer"
     bl_label = "Run 3D View Analyzer"
     def execute(self, context):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         if context.space_data.type == 'VIEW_3D':
             scn.last_shading = context.space_data.shading.color_type
             context.space_data.shading.type = 'SOLID'
@@ -133,11 +133,11 @@ class TOT_OT_ViewAnalyzer(bpy.types.Operator):
         scn.AA_Toggle = True
         return {'FINISHED'}
 
-class TOT_OT_CleanViewAnalyzer(bpy.types.Operator):
-    bl_idname = "tot.cleanviewanalyzer"
+class LOD_OT_CleanViewAnalyzer(bpy.types.Operator):
+    bl_idname = "lod.cleanviewanalyzer"
     bl_label = "Clear View Analyzer"
     def execute(self, context):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         if context.space_data.type == 'VIEW_3D':
             target = scn.last_shading if scn.last_shading else 'MATERIAL'
             context.space_data.shading.color_type = target
@@ -149,9 +149,9 @@ class TOT_OT_CleanViewAnalyzer(bpy.types.Operator):
         scn.AA_Toggle = False
         return {'FINISHED'}
 
-class TOT_OT_OpenWebsite(bpy.types.Operator):
+class LOD_OT_OpenWebsite(bpy.types.Operator):
     """访问作者主页 / 教程"""
-    bl_idname = "tot.open_website"
+    bl_idname = "lod.open_website"
     bl_label = "Open Website"
     
     def execute(self, context):
@@ -169,11 +169,11 @@ class TOT_OT_OpenWebsite(bpy.types.Operator):
 
 
 classes = (
-    TOT_OT_CollectionAnalyzer,
-    TOT_OT_CleanColors, 
-    TOT_OT_ViewAnalyzer,
-    TOT_OT_CleanViewAnalyzer,
-    TOT_OT_OpenWebsite,
+    LOD_OT_CollectionAnalyzer,
+    LOD_OT_CleanColors, 
+    LOD_OT_ViewAnalyzer,
+    LOD_OT_CleanViewAnalyzer,
+    LOD_OT_OpenWebsite,
         )
 
 def register():
@@ -184,7 +184,7 @@ def unregister():
 
 
     """访问作者主页 / 教程"""
-    bl_idname = "tot.open_website"
+    bl_idname = "lod.open_website"
     bl_label = "Open Website"
     
     def execute(self, context):

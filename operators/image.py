@@ -12,14 +12,14 @@ try:
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
-    print("[TOT] PIL (Pillow) not found. Falling back to native Blender API.")
+    print("[LOD] PIL (Pillow) not found. Falling back to native Blender API.")
 
-class TOT_OT_UpdateImageList(bpy.types.Operator):
-    bl_idname = "tot.updateimagelist"
+class LOD_OT_UpdateImageList(bpy.types.Operator):
+    bl_idname = "lod.updateimagelist"
     bl_label = "Update Image List"
     
     def execute(self, context):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         scn.image_list.clear()
         
         total_size_mb = 0.0
@@ -75,7 +75,7 @@ class TOT_OT_UpdateImageList(bpy.types.Operator):
         # --- 3. 将排序后的数据填入 UI 列表 ---
         for data in temp_data_list:
             item = scn.image_list.add()
-            item.tot_image_name = data["obj"].name
+            item.lod_image_name = data["obj"].name
             item.image_size = data["size_str"]
             item.packed_img = data["packed_status"]
             # 默认为 False，保持未选中状态
@@ -86,12 +86,12 @@ class TOT_OT_UpdateImageList(bpy.types.Operator):
         
         return {'FINISHED'}
 
-class TOT_OT_SelectAllImages(bpy.types.Operator):
-    bl_idname = "tot.imglistselectall"
+class LOD_OT_SelectAllImages(bpy.types.Operator):
+    bl_idname = "lod.imglistselectall"
     bl_label = "Select All"
     
     def execute(self, context):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         # 智能反选
         has_unselected = any(not i.image_selected for i in scn.image_list)
         for i in scn.image_list:
@@ -165,9 +165,9 @@ def pil_resize_worker(task_data, result_queue):
     except Exception as e:
         result_queue.put({"status": "ERROR", "img_name": task_data["img_name"], "error": str(e)})
 
-class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
+class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
     """混合动力缩放：优先使用 PIL 多线程，不支持时回退原生 API"""
-    bl_idname = "tot.resizeimages_async"
+    bl_idname = "lod.resizeimages_async"
     bl_label = "Resize Images (Async)"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -243,7 +243,7 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         
         base_path = bpy.path.abspath("//")
         if not base_path:
@@ -272,7 +272,7 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
         for item in scn.image_list:
             if not item.image_selected: continue
             
-            img = bpy.data.images.get(item.tot_image_name)
+            img = bpy.data.images.get(item.lod_image_name)
             if not img: continue
             if img.source in {'VIEWER', 'GENERATED'}: continue
             
@@ -287,7 +287,7 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
 
             # [修复 2] 绝对禁止 PIL 处理高动态范围图像，防止变紫丢失
             if ext in {'.exr', '.hdr'}:
-                print(f"[TOT] Copying HDR/EXR (No Resize): {img.name}")
+                print(f"[LOD] Copying HDR/EXR (No Resize): {img.name}")
                 # 使用 PIL 线程（因为它其实是文件 IO 线程）来做拷贝，避免卡顿
                 method = "PIL" 
                 action = "COPY"
@@ -301,8 +301,8 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
                          method = "PIL"
             
             # 记录原始路径 (这对 Hot Swap 很重要)
-            if "tot_original_path" not in img:
-                img["tot_original_path"] = img.filepath
+            if "lod_original_path" not in img:
+                img["lod_original_path"] = img.filepath
 
             # 构造目标文件名
             original_filepath = img.filepath_from_user()
@@ -322,7 +322,7 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
             new_full_path = os.path.join(self.output_dir, new_file_name)
 
             task_data = {
-                "img_name": item.tot_image_name,
+                "img_name": item.lod_image_name,
                 "target_size": self.target_size,
                 "src_path": bpy.path.abspath(img.filepath), 
                 "dst_path": new_full_path,                 
@@ -413,7 +413,7 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
         context.window_manager.progress_end()
         
         # 刷新 UI
-        bpy.ops.tot.updateimagelist()
+        bpy.ops.lod.updateimagelist()
         
         # 强力 GC，回收 Native 模式产生的垃圾
         gc.collect() 
@@ -421,9 +421,9 @@ class TOT_OT_ResizeImagesAsync(bpy.types.Operator):
         self.report({'INFO'}, f"Resize Complete! {self._processed} images processed.")
         return {'FINISHED'}
     
-class TOT_OT_ClearDuplicateImage(bpy.types.Operator):
+class LOD_OT_ClearDuplicateImage(bpy.types.Operator):
     """清理重复贴图：将 .001, .002 结尾的图片替换为原始图片"""
-    bl_idname = "tot.clearduplicateimage"
+    bl_idname = "lod.clearduplicateimage"
     bl_label = "Clear Duplicate Images"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -526,14 +526,14 @@ class TOT_OT_ClearDuplicateImage(bpy.types.Operator):
                     bpy.data.images.remove(img)
                     removed_blocks += 1
         # 刷新列表
-        bpy.ops.tot.updateimagelist()
+        bpy.ops.lod.updateimagelist()
         
         self.report({'INFO'}, f"Replaced {cleaned_count} duplicate image references.")
         return {'FINISHED'}
 
-class TOT_OT_DeleteTextureFolder(bpy.types.Operator):
+class LOD_OT_DeleteTextureFolder(bpy.types.Operator):
     """删除指定的贴图文件夹 (物理删除)"""
-    bl_idname = "tot.delete_texture_folder"
+    bl_idname = "lod.delete_texture_folder"
     bl_label = "Delete Folder"
     bl_options = {'REGISTER', 'UNDO'} # 注意：文件删除无法通过 Blender 的 Undo 撤销
 
@@ -565,9 +565,9 @@ class TOT_OT_DeleteTextureFolder(bpy.types.Operator):
         # 弹窗确认，防止误删
         return context.window_manager.invoke_confirm(self, event)
 
-class TOT_OT_SwitchResolution(bpy.types.Operator):
+class LOD_OT_SwitchResolution(bpy.types.Operator):
     """在原图和不同分辨率的缓存图之间切换"""
-    bl_idname = "tot.switch_resolution"
+    bl_idname = "lod.switch_resolution"
     bl_label = "Switch Texture Resolution"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -576,7 +576,7 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
     target_res: bpy.props.StringProperty()
 
     def execute(self, context):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         target = self.target_res
 
         # 获取当前 blend 文件的绝对目录
@@ -591,7 +591,7 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
 
 
         for item in scn.image_list:
-            img = bpy.data.images.get(item.tot_image_name)
+            img = bpy.data.images.get(item.lod_image_name)
             if not img: continue
             if img.source in {'VIEWER', 'GENERATED'}: continue
 
@@ -599,8 +599,8 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
             # [修复点 1]：在此处统一计算 clean_name_base
             # ==========================================================
             # 优先尝试从存档的原始路径获取文件名（最稳妥，防止文件名已经是 _1024px 导致再次叠加）
-            if "tot_original_path" in img:
-                raw_filepath = img["tot_original_path"]
+            if "lod_original_path" in img:
+                raw_filepath = img["lod_original_path"]
             else:
                 raw_filepath = img.filepath_from_user()
 
@@ -617,8 +617,8 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
             # [修复点 1]：在此处统一计算 clean_name_base
             # ==========================================================
             # 优先尝试从存档的原始路径获取文件名（最稳妥，防止文件名已经是 _1024px 导致再次叠加）
-            if "tot_original_path" in img:
-                raw_filepath = img["tot_original_path"]
+            if "lod_original_path" in img:
+                raw_filepath = img["lod_original_path"]
             else:
                 raw_filepath = img.filepath_from_user()
 
@@ -633,8 +633,8 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
             # --- 情况 A: 切换回原图 ---
             if target == 'ORIGINAL':
                 # 只有当图片有“存档记录”时才能恢复
-                if "tot_original_path" in img:
-                    orig_path = img["tot_original_path"]
+                if "lod_original_path" in img:
+                    orig_path = img["lod_original_path"]
 
                     # 转绝对路径检查是否存在
 
@@ -647,7 +647,7 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
                         img.reload()
                         switched_count += 1
                     else:
-                        print(f"[TOT] Original file missing: {abs_orig_path}")
+                        print(f"[LOD] Original file missing: {abs_orig_path}")
                 else:
                     pass
 
@@ -715,16 +715,16 @@ class TOT_OT_SwitchResolution(bpy.types.Operator):
 
 
         # 刷新列表 UI
-        bpy.ops.tot.updateimagelist()
+        bpy.ops.lod.updateimagelist()
 
 
         msg = f"Restored {switched_count} images to Original." if target == 'ORIGINAL' else f"Switched {switched_count} images to {target}px."
         self.report({'INFO'}, msg)
         return {'FINISHED'}
-    
-class TOT_OT_OptimizeByCamera(bpy.types.Operator):
+
+class LOD_OT_OptimizeByCamera(bpy.types.Operator):
     """【多线程版】根据相机视角自动计算并生成优化贴图"""
-    bl_idname = "tot.optimize_by_camera"
+    bl_idname = "lod.optimize_by_camera"
     bl_label = "Optimize by Camera (Async)"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -823,7 +823,7 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         cam = scn.lod_camera or context.scene.camera
         
         if not cam:
@@ -851,7 +851,7 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
 
     def do_analysis(self, context):
         """分析场景，构建任务队列 (保持原逻辑不变)"""
-        scn = context.scene.tot_props
+        scn = context.scene.lod_props
         cam = scn.lod_camera or context.scene.camera
 
         if scn.resize_size == 'c':
@@ -874,7 +874,7 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
             # 如果是实例母体，直接跳过分析
             # 这意味着它的贴图不会被缩小，保留原图（或者如果你希望它被视为全高清，可以手动处理，但跳过最安全）
             if obj in instance_sources:
-                print(f"[TOT] Skipping texture opt for instance source: {obj.name}")
+                print(f"[LOD] Skipping texture opt for instance source: {obj.name}")
                 continue
             # 计算物体在屏幕上的像素大小
             px_size, visible = utils.calculate_screen_coverage(context.scene, obj, cam)
@@ -903,7 +903,7 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
             self._queue.append((img, req_px))
             
         self._total_tasks = len(self._queue)
-        print(f"[TOT] Analysis complete. {self._total_tasks} textures to process.")
+        print(f"[LOD] Analysis complete. {self._total_tasks} textures to process.")
 
     def prepare_task_data(self, img, req_px):
         """
@@ -932,8 +932,8 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         if final_size < 4: final_size = 4
 
         # 2. 构造文件名和路径
-        if "tot_original_path" not in img:
-            img["tot_original_path"] = img.filepath
+        if "lod_original_path" not in img:
+            img["lod_original_path"] = img.filepath
 
         original_filepath = img.filepath_from_user()
         file_name = os.path.basename(original_filepath)
@@ -1033,7 +1033,7 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
     def finish(self, context):
         context.window_manager.event_timer_remove(self._timer)
         context.window_manager.progress_end()
-        bpy.ops.tot.updateimagelist()
+        bpy.ops.lod.updateimagelist()
 
         # Purge
         try:
@@ -1049,13 +1049,13 @@ class TOT_OT_OptimizeByCamera(bpy.types.Operator):
         context.window_manager.progress_end()
 
 classes = (
-    TOT_OT_UpdateImageList,
-    TOT_OT_SelectAllImages,
-    TOT_OT_ResizeImagesAsync,
-    TOT_OT_ClearDuplicateImage,
-    TOT_OT_DeleteTextureFolder,
-    TOT_OT_SwitchResolution,
-    TOT_OT_OptimizeByCamera,
+    LOD_OT_UpdateImageList,
+    LOD_OT_SelectAllImages,
+    LOD_OT_ResizeImagesAsync,
+    LOD_OT_ClearDuplicateImage,
+    LOD_OT_DeleteTextureFolder,
+    LOD_OT_SwitchResolution,
+    LOD_OT_OptimizeByCamera,
 )
 
 def register():

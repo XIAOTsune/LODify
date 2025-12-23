@@ -6,14 +6,14 @@ from bpy.props import (
 
 
 # --- 数据项类 (Collection Items) ---
-class TOT_ImageItem(bpy.types.PropertyGroup):
-    tot_image_name: StringProperty()
+class LOD_ImageItem(bpy.types.PropertyGroup):
+    lod_image_name: StringProperty()
     image_size: StringProperty()
     image_selected: BoolProperty(default=False)
     packed_img: IntProperty(default=0) # 0:File, 1:Packed, 2:Linked
 
 # --- 主属性组 ---
-class TOT_Props(bpy.types.PropertyGroup):
+class LOD_Props(bpy.types.PropertyGroup):
     language: EnumProperty(
         name="Language",
         description="Switch Interface Language",
@@ -45,7 +45,7 @@ class TOT_Props(bpy.types.PropertyGroup):
     last_shading: StringProperty()
 
     # 贴图管理
-    image_list: CollectionProperty(type=TOT_ImageItem)
+    image_list: CollectionProperty(type=LOD_ImageItem)
     custom_index_image_list: IntProperty()
     
     # 缩放相关
@@ -165,16 +165,16 @@ class TOT_Props(bpy.types.PropertyGroup):
 
 # 注册列表
 classes = (
-    TOT_ImageItem,
-    TOT_Props,
+    LOD_ImageItem,
+    LOD_Props,
 )
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.tot_props = PointerProperty(type=TOT_Props)
+    bpy.types.Scene.lod_props = PointerProperty(type=LOD_Props)
 
 def unregister():
-    del bpy.types.Scene.tot_props
+    del bpy.types.Scene.lod_props
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)

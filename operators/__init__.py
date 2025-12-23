@@ -6,7 +6,7 @@ from . import shader_lod
 import bpy
 
 def register():
-    bpy.utils.register_class(TOT_OT_RunAllOptimization)
+    bpy.utils.register_class(LOD_OT_RunAllOptimization)
 
 def unregister():
-    bpy.utils.unregister_class(TOT_OT_RunAllOptimization)
+    bpy.utils.unregister_class(LOD_OT_RunAllOptimization)
