@@ -7,8 +7,8 @@ from .. import utils
 # =============================================================================
 # 常量定义
 # =============================================================================
-DECIMATE_MOD_NAME = "TOT_LOD_DECIMATE"
-GEO_NODES_MOD_NAME = "TOT_GEO_LOD"
+DECIMATE_MOD_NAME = "LOD_DECIMATE"
+GEO_NODES_MOD_NAME = "LOD_GEO_LOD"
 GN_INPUT_FACTOR = "LOD_Factor"      # 接口1：强度
 GN_INPUT_ANGLE = "Angle_Threshold" 
 GN_INPUT_MAX_DIST = "Max_Merge_Dist" # 接口2：角度阈值

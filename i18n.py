@@ -91,7 +91,7 @@ def tr(text_key):
     # 获取上下文中的语言设置
     # 注意：为了防止在注册阶段报错，加个 try-except
     try:
-        scn = bpy.context.scene.tot_props
+        scn = bpy.context.scene.lod_props
         if scn.language == 'CN':
             return TRANSLATION_DICT.get(text_key, text_key) # 如果找不到翻译，返回原文
     except:

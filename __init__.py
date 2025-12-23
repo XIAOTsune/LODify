@@ -88,7 +88,7 @@ def register():
             mod.register()
         except Exception as e:
             # 打印错误但不要让插件加载完全失败，方便调试
-            print(f"ToOptimize Register Error in {mod}: {e}")
+            print(f"LODify Register Error in {mod}: {e}")
 
 def unregister():
     # --- 2. 安全卸载逻辑 ---
@@ -97,7 +97,7 @@ def unregister():
         try:
             mod.unregister()
         except Exception as e:
-            print(f"ToOptimize Unregister Error in {mod}: {e}")
+            print(f"LODify Unregister Error in {mod}: {e}")
             pass # 强制继续卸载下一个模块
 
     # 清理可能残留的属性 (防止下次加载报错)
