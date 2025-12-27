@@ -1,11 +1,13 @@
 import bpy
 from mathutils import Vector
+from ..i18n import ADDON_DOMAIN
 
 class LOD_OT_ViewportLODUpdate(bpy.types.Operator):
     """根据距离更新视窗显示模式 (Solid/Wire/Bounds)"""
     bl_idname = "lod.viewport_lod_update"
     bl_label = "Update Viewport LOD"
     bl_options = {'REGISTER', 'UNDO'}
+    bl_translation_context = ADDON_DOMAIN
 
     def execute(self, context):
         scn = context.scene.lod_props
@@ -99,7 +101,8 @@ class LOD_OT_ViewportLODReset(bpy.types.Operator):
     bl_idname = "lod.viewport_lod_reset"
     bl_label = "Reset Viewport"
     bl_options = {'REGISTER', 'UNDO'}
-
+    bl_translation_context = ADDON_DOMAIN
+    
     def execute(self, context):
         restored_count = 0
         default_count = 0

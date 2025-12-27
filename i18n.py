@@ -11,7 +11,7 @@ translations = {
         # --- Header ---
         "LODify": "LODify 优化工具",
         
-        # --- Panels (注意：如果UI里写的是 "1. Collection Analyzer"，这里必须完全一致) ---
+        # --- Panels ---
         "1. Collection Analyzer": "1. 集合分析器",
         "2. View Analyzer": "2. 视图分析器",
         "3. Image Resizer": "3. 贴图缩放管理",
@@ -155,9 +155,11 @@ translations = {
         "Reset Shader Parameters": "重置材质参数",
     }
 }
+ADDON_DOMAIN = "lodify.i18n.context"
 
 def register():
-    bpy.app.translations.register(__name__, translations)
+    bpy.app.translations.register(ADDON_DOMAIN, translations)
+    print(f"[LODify] Registered i18n with Fixed Domain: '{ADDON_DOMAIN}'")
 
 def unregister():
-    bpy.app.translations.unregister(__name__)
+    bpy.app.translations.unregister(ADDON_DOMAIN)

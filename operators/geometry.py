@@ -3,6 +3,7 @@ import time
 import math
 from mathutils import Vector
 from .. import utils
+from ..i18n import ADDON_DOMAIN
 
 # =============================================================================
 # 常量定义
@@ -189,6 +190,7 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
     bl_idname = "lod.geo_lod_setup"
     bl_label = "Setup Modifiers"
     bl_options = {'REGISTER', 'UNDO'}
+    bl_translation_context = ADDON_DOMAIN
 
     # --- 异步相关变量 ---
     _timer = None
@@ -342,6 +344,7 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
     bl_idname = "lod.geo_lod_update_async"
     bl_label = "Update Geometry (Async)"
     bl_options = {'REGISTER', 'UNDO'}
+    bl_translation_context = ADDON_DOMAIN
 
     _timer = None
     _queue = []
@@ -486,6 +489,8 @@ class LOD_OT_GeoLODReset(bpy.types.Operator):
     bl_idname = "lod.geo_lod_reset"
     bl_label = "Reset Geometry"
     bl_options = {'REGISTER', 'UNDO'}
+    bl_translation_context = ADDON_DOMAIN
+
     def execute(self, context):
         removed = 0
         for obj in context.scene.objects:
@@ -502,7 +507,8 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
     bl_idname = "lod.geo_lod_apply_async"
     bl_label = "Apply (Destructive) Async"
     bl_options = {'REGISTER', 'UNDO'}
-
+    bl_translation_context = ADDON_DOMAIN
+    
     _timer = None
     _queue = []
     _total_tasks = 0

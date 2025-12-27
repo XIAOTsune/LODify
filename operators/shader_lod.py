@@ -1,12 +1,14 @@
 import bpy
 import time
 from mathutils import Vector
+from ..i18n import ADDON_DOMAIN
 
 class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
     """异步更新材质 Shader 细节 (法线/置换)"""
     bl_idname = "lod.shader_lod_update_async"
     bl_label = "Update Shader LOD (Async)"
     bl_options = {'REGISTER', 'UNDO'}
+    bl_translation_context = ADDON_DOMAIN
 
     _timer = None
     _queue = []
@@ -183,7 +185,8 @@ class LOD_OT_ShaderLODReset(bpy.types.Operator):
     bl_idname = "lod.shader_lod_reset"
     bl_label = "Reset Shader Parameters"
     bl_options = {'REGISTER', 'UNDO'}
-
+    bl_translation_context = ADDON_DOMAIN
+    
     def execute(self, context):
         count = 0
         for mat in bpy.data.materials:

@@ -8,18 +8,26 @@ import gc
 import subprocess # 替代 threading
 import sys        # 用于获取 python 解释器路径
 from .. import utils
+from ..i18n import ADDON_DOMAIN
 
-# 仍然保留这个检查，仅用于 UI 提示用户是否安装了 PIL
-try:
-    from PIL import Image
-    HAS_PIL = True
-except ImportError:
-    HAS_PIL = False
-
+# 延迟导入pil
+def check_pil_available():
+    """
+    Lazy import check for PIL.
+    Only checks when called, avoiding top-level dependency issues.
+    """
+    try:
+        import PIL
+        from PIL import Image # 确保 Image 也能引用
+        return True
+    except ImportError:
+        return False
+    
 class LOD_OT_UpdateImageList(bpy.types.Operator):
     bl_idname = "lod.updateimagelist"
     bl_label = "Update Image List"
-    
+    bl_translation_context = ADDON_DOMAIN
+
     def execute(self, context):
         scn = context.scene.lod_props
         scn.image_list.clear()
@@ -88,7 +96,8 @@ class LOD_OT_UpdateImageList(bpy.types.Operator):
 class LOD_OT_SelectAllImages(bpy.types.Operator):
     bl_idname = "lod.imglistselectall"
     bl_label = "Select All"
-    
+    bl_translation_context = ADDON_DOMAIN
+
     def execute(self, context):
         scn = context.scene.lod_props
         has_unselected = any(not i.image_selected for i in scn.image_list)
@@ -110,6 +119,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
     bl_idname = "lod.resizeimages_async"
     bl_label = "Resize Images (Async)"
     bl_options = {'REGISTER', 'UNDO'}
+    bl_translation_context = ADDON_DOMAIN
 
     _timer = None
     _task_queue = []        # 待处理任务 (字典列表)
@@ -251,7 +261,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
                 action = "COPY"
             
             # 只有当安装了 PIL 且文件在本地时，才使用子进程
-            elif HAS_PIL:
+            elif check_pil_available():
                 if not img.packed_file and img.filepath:
                      abs_path = bpy.path.abspath(img.filepath)
                      if os.path.exists(abs_path):
@@ -392,6 +402,7 @@ class LOD_OT_ClearDuplicateImage(bpy.types.Operator):
     bl_idname = "lod.clearduplicateimage"
     bl_label = "Clear Duplicate Images"
     bl_options = {'REGISTER', 'UNDO'}
+    bl_translation_context = ADDON_DOMAIN
 
     def execute(self, context):
         cleaned_count = 0
@@ -442,6 +453,7 @@ class LOD_OT_DeleteTextureFolder(bpy.types.Operator):
     bl_label = "Delete Folder"
     bl_options = {'REGISTER', 'UNDO'} 
     folder_name: bpy.props.StringProperty() 
+    bl_translation_context = ADDON_DOMAIN
 
     def execute(self, context):
         base_path = bpy.path.abspath("//")
@@ -507,6 +519,7 @@ class LOD_OT_SwitchResolution(bpy.types.Operator):
     bl_idname = "lod.switch_resolution"
     bl_label = "Switch Texture Resolution"
     bl_options = {'REGISTER', 'UNDO'}
+    bl_translation_context = ADDON_DOMAIN
 
     target_res: bpy.props.StringProperty()
 
@@ -599,7 +612,8 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
     bl_idname = "lod.optimize_by_camera"
     bl_label = "Optimize by Camera (Async)"
     bl_options = {'REGISTER', 'UNDO'}
-
+    bl_translation_context = ADDON_DOMAIN
+    
     _timer = None
     _queue = []       # 待处理任务
     _active_processes = [] # 子进程列表
@@ -840,7 +854,7 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         if ext in {'.exr', '.hdr'}:
             method = "PIL"
             action = "COPY"
-        elif HAS_PIL:
+        elif check_pil_available():
             if not img.packed_file and img.filepath:
                  abs_path = bpy.path.abspath(img.filepath)
                  if os.path.exists(abs_path):
