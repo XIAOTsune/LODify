@@ -13,7 +13,7 @@ import os
 
 
 ADDON_WEBSITE_URL = "https://github.com/XIAOTsune/LODify" # 默认值
-AUTHOR_NAME = "小T_sune" # 你想要显示在标题栏的名字
+AUTHOR_NAME = "XIAOTsune" # 你想要显示在标题栏的名字
 
 from . import properties
 from . import ui 

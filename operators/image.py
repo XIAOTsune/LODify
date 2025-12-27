@@ -446,13 +446,53 @@ class LOD_OT_DeleteTextureFolder(bpy.types.Operator):
     def execute(self, context):
         base_path = bpy.path.abspath("//")
         if not base_path: return {'CANCELLED'}
-        target_path = os.path.join(base_path, self.folder_name)
         
-        if os.path.exists(target_path):
+        target_path_abs = os.path.join(base_path, self.folder_name)
+        target_path_abs = os.path.normpath(target_path_abs) # 标准化路径
+        
+        if os.path.exists(target_path_abs):
+            # 检查是否有图片正在使用这个文件夹里的文件，如果有，强制切回原图
+            restored_count = 0
+            for img in bpy.data.images:
+                if img.source in {'VIEWER', 'GENERATED'}: continue
+                if not img.filepath: continue
+                
+                # 获取该图片的绝对路径
+                try:
+                    img_abs = os.path.normpath(bpy.path.abspath(img.filepath))
+                except:
+                    continue
+                
+                # 判断：如果图片的路径以 我们要删除的文件夹路径 开头
+                # 说明这张图在这个文件夹里
+                if img_abs.startswith(target_path_abs):
+                    # 尝试恢复原图
+                    if "lod_original_path" in img:
+                        orig_path = img["lod_original_path"]
+                        # 这里我们不做过于严格的 exists 检查，优先保证修改回原本的路径字符串
+                        # 哪怕原图丢了，路径指回正确的位置也比指在一个即将删除的文件夹好
+                        img.filepath = orig_path
+                        try: img.reload()
+                        except: pass
+                        restored_count += 1
+            
+            if restored_count > 0:
+                print(f"[LOD] Auto-restored {restored_count} images before deleting folder.")
+
+            # - 执行删除 ---
             try:
-                shutil.rmtree(target_path)
-                self.report({'INFO'}, f"Deleted folder: {self.folder_name}")
-                context.area.tag_redraw()
+                shutil.rmtree(target_path_abs)
+                
+                # 删除后强制刷新列表
+                bpy.ops.lod.updateimagelist()
+                
+                self.report({'INFO'}, f"Deleted folder: {self.folder_name} (Restored {restored_count} images)")
+                
+                # 强制刷新界面
+                for window in context.window_manager.windows:
+                    for area in window.screen.areas:
+                        area.tag_redraw()
+                        
             except Exception as e:
                 self.report({'ERROR'}, f"Failed to delete: {e}")
                 return {'CANCELLED'}
@@ -462,7 +502,7 @@ class LOD_OT_DeleteTextureFolder(bpy.types.Operator):
 
     def invoke(self, context, event):
         return context.window_manager.invoke_confirm(self, event)
-
+    
 class LOD_OT_SwitchResolution(bpy.types.Operator):
     bl_idname = "lod.switch_resolution"
     bl_label = "Switch Texture Resolution"
@@ -479,12 +519,14 @@ class LOD_OT_SwitchResolution(bpy.types.Operator):
             return {'CANCELLED'}
 
         switched_count = 0
+        fail_count = 0
 
         for item in scn.image_list:
             img = bpy.data.images.get(item.lod_image_name)
             if not img: continue
             if img.source in {'VIEWER', 'GENERATED'}: continue
 
+            # 获取基础文件名用于匹配
             if "lod_original_path" in img:
                 raw_filepath = img["lod_original_path"]
             else:
@@ -494,15 +536,30 @@ class LOD_OT_SwitchResolution(bpy.types.Operator):
             if not file_name: file_name = img.name
             clean_name_base, _ = os.path.splitext(file_name)
 
+            # --- 切换逻辑 ---
             if target == 'ORIGINAL':
                 if "lod_original_path" in img:
                     orig_path = img["lod_original_path"]
                     abs_orig_path = bpy.path.abspath(orig_path)
+                    
+                    # [优化] 检查原图是否存在
                     if os.path.exists(abs_orig_path):
                         img.filepath = orig_path
                         img.reload()
                         switched_count += 1
+                    else:
+                        # [兜底策略] 如果原图找不到了，但当前图是坏的（比如被删了），
+                        # 那还是强行指回原图路径，至少路径是对的，用户只要把文件放回去就行。
+                        # 检查当前图片是否有效 (size 0,0 通常意味着丢失)
+                        if img.size[0] == 0:
+                            print(f"[LOD] Warning: Original file missing ({abs_orig_path}), but restoring path anyway.")
+                            img.filepath = orig_path
+                            switched_count += 1
+                        else:
+                            print(f"[LOD] Skip restore: Original file missing: {abs_orig_path}")
+                            fail_count += 1
             else:
+                # 切换到其他分辨率 (代码保持不变)
                 if target == "camera_optimized":
                     folder_name = "textures_camera_optimized"
                 else:
@@ -524,7 +581,13 @@ class LOD_OT_SwitchResolution(bpy.types.Operator):
                     switched_count += 1
 
         bpy.ops.lod.updateimagelist()
-        msg = f"Restored {switched_count} images to Original." if target == 'ORIGINAL' else f"Switched {switched_count} images to {target}px."
+        
+        msg = f"Switched {switched_count} images."
+        if target == 'ORIGINAL':
+            msg = f"Restored {switched_count} images."
+            if fail_count > 0:
+                msg += f" (Skipped {fail_count} missing originals)"
+                
         self.report({'INFO'}, msg)
         return {'FINISHED'}
 

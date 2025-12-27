@@ -4,7 +4,7 @@ id = "lodify_optimizer"
 version = "2.2.0"
 name = "LODify"
 tagline = "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt"
-maintainer = "小T_sune"
+maintainer = "XIAOTsune"
 type = "add-on"
 website = "https://github.com/XIAOTsune/LODify"
 
@@ -17,8 +17,8 @@ blender_version_min = "4.2.0"
 
 [permissions]
 
-files = "reason = 'Required to read and write texture files for resizing.'"
-network = "reason = 'Required to open the documentation/author website.'"
+files = "Required to read and write texture files for resizing."
+network = "Required to open the documentation/author website."
 
 [build]
 paths = ["."]

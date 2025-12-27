@@ -3,7 +3,7 @@ from .. import utils
 import json
 
 class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
-    """根据顶点数标记集合颜色并显示百分比"""
+    """Analyzes collection vertex counts and color-codes them"""
     bl_idname = "lod.collectionanalyzer"
     bl_label = "Run Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -76,7 +76,7 @@ class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
         return {'FINISHED'}
 
 class LOD_OT_CleanColors(bpy.types.Operator):
-    """恢复集合名称和颜色"""
+    """Restores original collection names and colors"""
     bl_idname = "lod.cleancolors"
     bl_label = "Clear Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
@@ -111,6 +111,7 @@ class LOD_OT_CleanColors(bpy.types.Operator):
 
 # ... (ViewAnalyzer Code stays roughly the same) ...
 class LOD_OT_ViewAnalyzer(bpy.types.Operator):
+    """Analyzes objects in 3D view and color-codes by density"""
     bl_idname = "lod.viewanalyzer"
     bl_label = "Run 3D View Analyzer"
     def execute(self, context):
@@ -138,6 +139,7 @@ class LOD_OT_ViewAnalyzer(bpy.types.Operator):
         return {'FINISHED'}
 
 class LOD_OT_CleanViewAnalyzer(bpy.types.Operator):
+    """Clear View Analyzer"""
     bl_idname = "lod.cleanviewanalyzer"
     bl_label = "Clear View Analyzer"
     def execute(self, context):
@@ -167,21 +169,3 @@ def register():
 
 def unregister():
     for cls in reversed(classes): bpy.utils.unregister_class(cls)
-
-
-    """访问作者主页 / 教程"""
-    bl_idname = "lod.open_website"
-    bl_label = "Open Website"
-    
-    def execute(self, context):
-        # 从 __init__ 导入全局变量
-        # 注意：使用相对导入获取包层级的变量
-        from .. import ADDON_WEBSITE_URL
-        
-        if ADDON_WEBSITE_URL:
-            webbrowser.open(ADDON_WEBSITE_URL)
-            self.report({'INFO'}, f"Opening: {ADDON_WEBSITE_URL}")
-        else:
-            self.report({'WARNING'}, "No website URL configured.")
-            
-        return {'FINISHED'}
