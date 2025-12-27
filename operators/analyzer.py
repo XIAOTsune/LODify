@@ -1,6 +1,6 @@
 import bpy
 from .. import utils
-import webbrowser
+import json
 
 class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
     """根据顶点数标记集合颜色并显示百分比"""
@@ -71,7 +71,7 @@ class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
                 else: col.color_tag = 'COLOR_05'                  # Blue
 
         # 保存备份
-        scn.default_col_colors = str(backup)
+        scn.default_col_colors = json.dumps(backup)
         scn.CA_Toggle = True 
         return {'FINISHED'}
 
@@ -87,8 +87,12 @@ class LOD_OT_CleanColors(bpy.types.Operator):
         # 读取备份
         data = {}
         if scn.default_col_colors:
-            try: data = eval(scn.default_col_colors)
-            except: pass
+            try: 
+                #  使用 json.loads 替代 eval()，移除安全隐患
+                data = json.loads(scn.default_col_colors)
+            except Exception as e:
+                print(f"LODify Error loading colors: {e}")
+                pass
 
         for col in bpy.data.collections:
             # 1. 还原名字 (去除 " | 10.5%" 这种后缀)
@@ -149,23 +153,6 @@ class LOD_OT_CleanViewAnalyzer(bpy.types.Operator):
         scn.AA_Toggle = False
         return {'FINISHED'}
 
-class LOD_OT_OpenWebsite(bpy.types.Operator):
-    """访问作者主页 / 教程"""
-    bl_idname = "lod.open_website"
-    bl_label = "Open Website"
-    
-    def execute(self, context):
-        # 从 __init__ 导入全局变量
-        # 注意：使用相对导入获取包层级的变量
-        from .. import ADDON_WEBSITE_URL
-        
-        if ADDON_WEBSITE_URL:
-            webbrowser.open(ADDON_WEBSITE_URL)
-            self.report({'INFO'}, f"Opening: {ADDON_WEBSITE_URL}")
-        else:
-            self.report({'WARNING'}, "No website URL configured.")
-            
-        return {'FINISHED'}
 
 
 classes = (
@@ -173,7 +160,6 @@ classes = (
     LOD_OT_CleanColors, 
     LOD_OT_ViewAnalyzer,
     LOD_OT_CleanViewAnalyzer,
-    LOD_OT_OpenWebsite,
         )
 
 def register():

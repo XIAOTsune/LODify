@@ -3,9 +3,9 @@
 import bpy
 
 # 翻译字典：Key 是英文原始内容，Value 是对应的中文
-# 你可以在这里随意添加更多翻译
 TRANSLATION_DICT = {
     # --- 标题与通用 ---
+    "LODify": "Blender 优化工具",
     "Optimize Tools": "优化工具箱",
     "Collection Analyzer": "集合分析器",
     "View Analyzer": "视图分析器",
@@ -31,8 +31,9 @@ TRANSLATION_DICT = {
     "Apply GeoNodes (Destructive)": "应用几何节点 (不可逆)",
     "Merge Duplicate Images (.001)": "合并重复贴图 (.001)",
     "Delete Folder": "删除文件夹",
+    "Open Website": "打开官网",
     
-    # --- 属性标签 ---
+    # --- 属性标签 (这里的 Key 必须与 properties.py 和 main_panels.py 中的英文一致) ---
     "Method": "分析方法",
     "Color Thresholds (Vertex %)": "颜色阈值 (顶点百分比)",
     "Target": "目标尺寸",
@@ -47,7 +48,7 @@ TRANSLATION_DICT = {
     "Enable": "启用",
     "Min Faces (Safety)": "最小面数保护",
     "Min Ratio (Max Reduction)": "最小比例 (最大减面)",
-    "GN Strength Factor": "几何节点强度因子",
+    "Min Ratio Protection": "最小比例保护",
     "Data Cleanup": "数据清理",
     "Disk Storage Management": "磁盘存储管理",
     "Texture Optimization": "贴图优化",
@@ -61,20 +62,22 @@ TRANSLATION_DICT = {
     "Geometry LOD (Screen Ratio)": "几何体 LOD (屏幕占比模式)",
     "Min Ratio (Safety Floor)": "最小保留比例 (底限保护)",
     "Prevents breaking close-up details": "防止近景/特写细节丢失",
+    
+    # --- 新增的映射 (填补 properties.py 英文化的空缺) ---
     "GN Strength Factor": "节点强度因子",
-    "Higher Strength = More Merging": "强度越高 = 合并越多",
-    "Edge Threshold": "边缘角度阈值",
-    "Higher Angle = More Merging": "角度越大 = 合并越多 (保护越少)",
-    "Update Geometry (Async)": "更新模型 (异步)",
+    "Max Merge Distance": "最大合并距离",
+    "Auto Edge Protection": "自动边缘保护 (智能)",
+    "Distance-based Collapse": "基于距离的空间塌陷",
     "High <": "高精度 <",
     "Mid <": "中精度 <",
     "Low <": "低精度 <",
-    "Full": "全精度",
-    "Max Merge Distance": "最大合并距离",
-    "Merge Radius at furthest distance": "极远处的顶点合并半径 (值越大减面越狠)",
-    "Auto Edge Protection": "自动边缘保护 (智能)",
-    "Distance-based Collapse": "基于距离的空间塌陷",
-    "Max Merge Distance": "最大合并距离 (塌陷半径)",
+    "Custom Px": "自定义像素",
+    "Save in Blend Dir": "存至 Blend 目录",
+    "Custom Path": "自定义路径",
+    "Duplicate Files": "保留副本",
+    "Target Size": "目标尺寸",
+    "LOD Camera": "LOD 计算相机",
+    "LOD Method": "LOD 算法",
     
     # --- 提示信息 ---
     "(No resized sets found)": "(未找到已生成的尺寸组)",
@@ -84,17 +87,8 @@ TRANSLATION_DICT = {
 }
 
 def tr(text_key):
-    """
-    翻译核心函数：
-    根据当前场景的语言设置，返回对应的中文或英文
-    """
-    # 获取上下文中的语言设置
-    # 注意：为了防止在注册阶段报错，加个 try-except
-    try:
-        scn = bpy.context.scene.lod_props
-        if scn.language == 'CN':
-            return TRANSLATION_DICT.get(text_key, text_key) # 如果找不到翻译，返回原文
-    except:
-        pass
-    
-    return text_key # 默认为英文 (原文)
+    # (逻辑同上一步，保持自动检测)
+    locale = bpy.app.translations.locale
+    if locale.startswith('zh'):
+        return TRANSLATION_DICT.get(text_key, text_key)
+    return text_key

@@ -56,10 +56,10 @@ def load_manifest_info():
 bl_info = {
     "name": "LODify",
     "author": "小T_sune",
-    "version": (2, 0, 0),
+    "version": (2, 2, 0),
     "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
-    "description": "全场景性能优化：贴图、减面与视窗管理",
+    "description": "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt",
     "warning": "",
     "doc_url": "https://github.com/XIAOTsune/LODify",
     "category": "3D View",
@@ -76,7 +76,6 @@ modules = [
     operators.viewport,
     operators.geometry,
     operators.shader_lod,
-    operators, 
 ]
 
 def register():

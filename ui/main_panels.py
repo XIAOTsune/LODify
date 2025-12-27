@@ -25,19 +25,7 @@ class LOD_PT_Header(LOD_PT_MainPanel, bpy.types.Panel):
         
         # 左侧：插件标题
         # 根据语言切换标题
-        title = "LODify" if scn.language == 'EN' else "Blender 优化工具"
-        row.label(text=title, icon='MODIFIER')
-
-        sub = row.row()
-        sub.scale_x = 0.8 # 让字体或者间距稍微紧凑一点，视情况调整
-        sub.alignment = 'RIGHT' # 靠右对齐一点，或者紧跟标题
-        
-        # 这里的 icon 可以选 'URL', 'WORLD', 'COMMUNITY', 'User' 等
-        # text 显示你的名字
-        op = row.operator("lod.open_website", text=AUTHOR_NAME, icon='COMMUNITY', emboss=False)
-        
-        # 右侧：语言切换按钮 (expand=True 会把 Enum 显示为按钮组)
-        row.prop(scn, "language", expand=True)
+        row.label(text=tr("LODify"), icon='MODIFIER')
         
         layout.separator()
 

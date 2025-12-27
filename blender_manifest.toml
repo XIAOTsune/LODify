@@ -1,9 +1,9 @@
 schema_version = "1.0.0"
 
 id = "lodify_optimizer"
-version = "2.0.1"
+version = "2.2.0"
 name = "LODify"
-tagline = "全场景性能优化：贴图、减面与视窗管理"
+tagline = "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt"
 maintainer = "小T_sune"
 type = "add-on"
 website = "https://github.com/XIAOTsune/LODify"
@@ -17,8 +17,8 @@ blender_version_min = "4.2.0"
 
 [permissions]
 
-files = "用于读写贴图文件以进行缩放处理"
-network = "仅用于打开在线文档"
+files = "reason = 'Required to read and write texture files for resizing.'"
+network = "reason = 'Required to open the documentation/author website.'"
 
 [build]
 paths = ["."]

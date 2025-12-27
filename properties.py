@@ -14,15 +14,7 @@ class LOD_ImageItem(bpy.types.PropertyGroup):
 
 # --- 主属性组 ---
 class LOD_Props(bpy.types.PropertyGroup):
-    language: EnumProperty(
-        name="Language",
-        description="Switch Interface Language",
-        items=[
-            ('EN', "EN", "English"),
-            ('CN', "中", "中文")
-        ],
-        default='CN'
-    )
+
     # ==========================================================
     # 1. 全局开关与分析器
     # ==========================================================
@@ -71,7 +63,7 @@ class LOD_Props(bpy.types.PropertyGroup):
     # 用于计算距离的相机
     lod_camera: PointerProperty(
         name="LOD Camera",
-        description="用于计算屏幕占比的相机",
+        description="Camera used for screen coverage calculation",
         type=bpy.types.Object,
     )
     
@@ -83,37 +75,37 @@ class LOD_Props(bpy.types.PropertyGroup):
     # ==========================================================
     view_lod_enabled: BoolProperty(
         name="Enable Viewport LOD",
-        description="根据距离改变物体显示模式 (Solid/Wire/Bounds)",
+        description="Change object display mode (Solid/Wire/Bounds) based on distance",
         default=False,
     )
     
     # 定义显示模式枚举
     display_items = (
-        ('TEXTURED', "Textured", "完整材质"),
-        ('SOLID',    "Solid",    "实体显示"),
-        ('WIRE',     "Wire",     "线框显示"),
-        ('BOUNDS',   "Bounds",   "包围盒 (最快)"),
+        ('TEXTURED', "Textured", "Full Material"),
+        ('SOLID',    "Solid",    "Solid Shading"),
+        ('WIRE',     "Wire",     "Wireframe"),
+        ('BOUNDS',   "Bounds",   "Bounding Box (Fastest)"),
     )
 
     view_lod0_display: EnumProperty(name="L0 Display", items=display_items, default='TEXTURED')
     view_lod1_display: EnumProperty(name="L1 Display", items=display_items, default='SOLID')
     view_lod2_display: EnumProperty(name="L2 Display", items=display_items, default='WIRE')
     view_lod3_display: EnumProperty(name="L3 Display", items=display_items, default='BOUNDS')
-    view_lod3_hide: BoolProperty(name="Hide at L3", description="在极远距离直接隐藏物体", default=False)
+    view_lod3_hide: BoolProperty(name="Hide at L3", description="Hide objects completely at far distance", default=False)
 
     # ==========================================================
     # 4. 维度二：模型减面 (Geometry LOD)
     # ==========================================================
     geo_lod_enabled: BoolProperty(
             name="Enable Geometry LOD",
-            description="启用基于屏幕占比(Screen Ratio)的自动减面",
+            description="Enable screen ratio based decimation",
             default=False,
         )
     geo_lod_method: EnumProperty(
             name="LOD Method",
             items=[
-                ("DECIMATE", "Decimate Modifier", "使用传统 Decimate 修改器"),
-                ("GNODES", "Geometry Nodes", "使用几何节点 (高质量)"),
+                ("DECIMATE", "Decimate Modifier", "Use standard Decimate modifier"),
+                ("GNODES", "Geometry Nodes", "Use Geometry Nodes (High Quality)"),
             ],
             default="GNODES",
         )
@@ -122,7 +114,7 @@ class LOD_Props(bpy.types.PropertyGroup):
         name="Min Faces", 
         default=1000, 
         min=0, 
-        description="保护机制：面数少于此值的物体将不会被减面"
+        description="Protection: Objects with fewer faces will not be decimated"
     )
     
     # 这个参数同时控制 Decimate 的 ratio 和 GN 的 Factor
@@ -131,7 +123,7 @@ class LOD_Props(bpy.types.PropertyGroup):
             default=0.1, 
             min=0.01, 
             max=1.0, 
-            description="最强减面保护：即使物体在极远处，也至少保留此比例的面数 (防止完全崩坏)"
+            description="Strongest protection: Keep at least this ratio even at max distance"
         )
     # 最大合并距离
     geo_lod_max_dist: FloatProperty(
@@ -139,7 +131,7 @@ class LOD_Props(bpy.types.PropertyGroup):
         default=0.5,   # 默认 0.5m
         min=0.001,
         max=100.0,     # 给一个足够大的上限，应对巨型场景
-        description="极远处合并半径：距离越远，合并范围越大 (值越大减面越狠)"
+        description="Merge radius at furthest distance (Higher = More aggressive)"
     )    
 
     # ==========================================================
@@ -147,7 +139,7 @@ class LOD_Props(bpy.types.PropertyGroup):
     # ==========================================================
     exp_shader_lod_enabled: BoolProperty(
         name="Enable Shader LOD",
-        description="根据距离动态降低法线和置换强度",
+        description="Reduce normal/displacement strength based on distance",
         default=False,
     )
     
