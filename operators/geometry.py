@@ -337,9 +337,7 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
         return {'FINISHED'}
 
 class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
-    """
-    现在 Python 只需要计算 Factor，无需计算 Angle
-    """
+
     bl_idname = "lod.geo_lod_update_async"
     bl_label = "Update Geometry (Async)"
     bl_options = {'REGISTER', 'UNDO'}
@@ -502,7 +500,7 @@ class LOD_OT_GeoLODReset(bpy.types.Operator):
         return {'FINISHED'}
 
 class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
-    """异步批量应用 LOD 修改器 (防止界面卡死)"""
+    """Asynchronous Batch Application of LOD Modifiers (Prevents UI Freezing)"""
     bl_idname = "lod.geo_lod_apply_async"
     bl_label = "Apply (Destructive) Async"
     bl_options = {'REGISTER', 'UNDO'}

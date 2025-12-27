@@ -25,8 +25,8 @@ class LOD_Props(bpy.types.PropertyGroup):
     colA_Method: EnumProperty(
         name="Method", 
         items=[
-            ('m1', i18n('Default'), ''), 
-            ('m2', i18n('Advanced'), '')
+            ('m1', 'Default', ''),
+            ('m2', 'Advanced', '')
         ],
         default='m1'
     )
@@ -49,7 +49,7 @@ class LOD_Props(bpy.types.PropertyGroup):
         name="Target Size",
         items=[
             ('128', '128 px', ''), ('256', '256 px', ''), ('512', '512 px', ''),
-            ('1024', '1024 px', ''), ('2048', '2048 px', ''), ('c',i18n('Custom'), '')
+            ('1024', '1024 px', ''), ('2048', '2048 px', ''), ('c','Custom', '')
         ],
         default='1024'
     )

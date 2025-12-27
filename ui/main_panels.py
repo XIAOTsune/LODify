@@ -1,11 +1,7 @@
-# File Path: .\ui\main_panels.py
-
 import bpy
 import os
 from .. import AUTHOR_NAME
 from ..i18n import i18n
-
-# 移除了旧的 _(msg) 函数，统一使用导入的 i18n()
 
 class LOD_PT_MainPanel:
     bl_space_type = 'VIEW_3D'
@@ -29,13 +25,13 @@ class LOD_PT_Header(LOD_PT_MainPanel, bpy.types.Panel):
         layout.separator()
 
 class LOD_PT_CollectionAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
-    bl_label = "1. Collection Analyzer"
+    bl_label = "1. Collection Analyzer" # Blender 会根据 i18n 字典自动翻译这个字符串 
     bl_idname = "LOD_PT_CollectionAnalyzer"
     bl_order = 1
 
-    def draw_header(self, context):
-        # 翻译: 集合分析器
-        self.layout.label(text=i18n("Collection Analyzer"))
+    # 【修复操作】删除或注释掉这个函数
+    # def draw_header(self, context):
+    #     self.layout.label(text=i18n("Collection Analyzer"))
 
     def draw(self, context):
         layout = self.layout
@@ -72,14 +68,14 @@ class LOD_PT_ViewAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
     bl_idname = "LOD_PT_ViewAnalyzer"
     bl_order = 2
 
-    def draw_header(self, context):
-        # 翻译: 视图分析器
-        self.layout.label(text=i18n("View Analyzer"))
+    # 【修复操作】删除或注释掉这个函数
+    # def draw_header(self, context):
+    #     self.layout.label(text=i18n("View Analyzer"))
         
     def draw(self, context):
         layout = self.layout
         scn = context.scene.lod_props
-        # 翻译: 视图分析器
+        # 面板内部再次显示标题通常是多余的，你可以保留也可以删除下面这行
         layout.label(text=i18n("View Analyzer"), icon='SCENE_DATA')
         row = layout.row(align=True)
         row.scale_y = 1.2
@@ -95,9 +91,9 @@ class LOD_PT_ImageResizer(LOD_PT_MainPanel, bpy.types.Panel):
     bl_idname = "LOD_PT_ImageResizer"
     bl_order = 3
 
-    def draw_header(self, context):
-        # 翻译: 贴图缩放管理
-        self.layout.label(text=i18n("Image Resizer"))
+    # 【修复操作】删除或注释掉这个函数 (这是导致 "Image Resizer" 重复且不翻译的罪魁祸首)
+    # def draw_header(self, context):
+    #     self.layout.label(text=i18n("Image Resizer"))
 
     def draw(self, context):
         layout = self.layout
@@ -105,6 +101,7 @@ class LOD_PT_ImageResizer(LOD_PT_MainPanel, bpy.types.Panel):
         
         row = layout.row()
         row.scale_y = 1.2
+        
         # 翻译: 扫描 / 刷新图片列表
         row.operator("lod.updateimagelist", text=i18n("Scan / Refresh Images"), icon='FILE_REFRESH')
         
@@ -195,9 +192,9 @@ class LOD_PT_LODManager(LOD_PT_MainPanel, bpy.types.Panel):
     bl_idname = "LOD_PT_LODManager"
     bl_order = 4
 
-    def draw_header(self, context):
-        # 翻译: LOD 层级管理
-        self.layout.label(text=i18n("LOD Manager"))
+    # 【修复操作】删除或注释掉这个函数
+    # def draw_header(self, context):
+    #     self.layout.label(text=i18n("LOD Manager"))
 
     def draw(self, context):
         layout = self.layout
@@ -306,9 +303,9 @@ class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
     bl_idname = "LOD_PT_DuplicateRemover"
     bl_order = 5
     
-    def draw_header(self, context):
-        # 翻译: 清理与存储
-        self.layout.label(text=i18n("Clean Up & Storage"))
+    # 【修复操作】删除或注释掉这个函数
+    # def draw_header(self, context):
+    #     self.layout.label(text=i18n("Clean Up & Storage"))
 
     def draw(self, context):
         layout = self.layout
@@ -360,9 +357,9 @@ class LOD_PT_Experimental(LOD_PT_MainPanel, bpy.types.Panel):
     bl_order = 6
     bl_options = {'DEFAULT_CLOSED'}
 
-    def draw_header(self, context):
-        # 翻译: 实验性功能
-        self.layout.label(text=i18n("Experimental Features"))
+    # 【修复操作】删除或注释掉这个函数
+    # def draw_header(self, context):
+    #     self.layout.label(text=i18n("Experimental Features"))
 
     def draw(self, context):
         layout = self.layout
