@@ -132,6 +132,55 @@ ZH_DICT = {
     "Displacement Scale Multipliers": "置换强度倍率",
     "Update Shaders": "更新材质",
     "Reset Shader Parameters": "重置材质参数",
+    # --- Tooltips (Properties Descriptions) ---
+    "Camera used for screen coverage calculation": "用于计算屏幕占比的相机",
+    "High Detail End Distance": "高精度结束距离 (LOD 0)",
+    "Mid Detail End Distance": "中精度结束距离 (LOD 1)",
+    "Low Detail End Distance": "低精度结束距离 (LOD 2)",
+    
+    # Viewport
+    "Change object display mode (Solid/Wire/Bounds) based on distance": "根据距离自动切换物体显示模式 (实体/线框/边界框)",
+    "Hide objects completely at far distance": "在极远距离完全隐藏物体",
+    
+    # Geometry LOD
+    "Enable screen ratio based decimation": "启用基于屏幕占比的自动减面",
+    "Use standard Decimate modifier": "使用标准减面修改器 (速度快)",
+    "Use Geometry Nodes (High Quality)": "使用几何节点 (拓扑质量高)",
+    "Protection: Objects with fewer faces will not be decimated": "保护：面数少于此值的物体不会被处理",
+    "Strongest protection: Keep at least this ratio even at max distance": "最强保护：即使在最远距离，面数比例也不会低于此值",
+    "Merge radius at furthest distance (Higher = More aggressive)": "最远距离时的顶点合并半径 (值越高减面越狠)",
+    
+    # Shader LOD
+    "Reduce normal/displacement strength based on distance": "根据距离降低法线/置换贴图的强度",
+
+    # --- Operators Tooltips (代码注释翻译) ---
+    # Analyzer
+    "Analyzes collection vertex counts and color-codes them": "分析集合顶点数量并进行颜色标记",
+    "Restores original collection names and colors": "恢复原始集合名称和颜色",
+    "Analyzes objects in 3D view and color-codes by density": "分析视图物体并根据密度着色",
+    "Clear View Analyzer": "清除视图分析结果",
+
+    # Image
+    "Use subprocess to call an external worker.py script for image processing.": "使用子进程调用外部脚本处理图片 (防卡顿)",
+    # 注意：如果你的代码里有换行符 \n，字典里的 Key 必须完全匹配，建议代码里写成单行，或者这里对应写成多行字符串
+
+    # Geometry
+    "Setup Geometry LOD Modifiers (Async Version)": "设置几何体 LOD 修改器 (异步版)",
+    "Update Geometry (Async)": "更新几何体 (异步)",
+    "Asynchronous Batch Application of LOD Modifiers (Prevents UI Freezing)": "异步批量应用 LOD 修改器 (防止界面冻结)",
+    "Reset Geometry": "重置几何体修改器",
+
+    # Viewport
+    "Update Viewport Display Mode Based on Distance (Solid / Wire / Bounds)": "根据距离更新视窗显示模式 (实体/线框/边界框)",
+    "Restore Original Display Mode": "恢复原始显示模式",
+
+    # Shader (配合第一步修改后的英文)
+    "Update shader details (Normal/Displacement) asynchronously": "异步更新材质细节 (法线/置换)",
+    "Restore original shader parameters": "恢复材质原始参数",
+    "Reset Shader Parameters": "重置材质参数",
+
+    # Camera Optimization
+    "Optimize by Camera (Async)": "基于相机视角优化 (异步)",
 }
 
 translations = {

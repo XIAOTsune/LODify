@@ -109,9 +109,7 @@ class LOD_OT_SelectAllImages(bpy.types.Operator):
 # =============================================================================
 
 class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
-    """
-    Use subprocess to call an external worker.py script for image processing.
-    """
+    """Use subprocess to call an external worker.py script for image processing."""
     bl_idname = "lod.resizeimages_async"
     bl_label = "Resize Images (Async)"
     bl_options = {'REGISTER', 'UNDO'}

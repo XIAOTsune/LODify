@@ -19,7 +19,7 @@ class LOD_PT_Header(LOD_PT_MainPanel, bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         row = layout.row(align=True)
-        row.scale_y = 1.2
+        row.scale_y = 1.0
         # 翻译: LODify
         row.label(text=i18n("LODify"), icon='MODIFIER')
         layout.separator()

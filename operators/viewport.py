@@ -2,7 +2,7 @@ import bpy
 from mathutils import Vector
 
 class LOD_OT_ViewportLODUpdate(bpy.types.Operator):
-    """根据距离更新视窗显示模式 (Solid/Wire/Bounds)"""
+    """Update Viewport Display Mode Based on Distance (Solid / Wire / Bounds)"""
     bl_idname = "lod.viewport_lod_update"
     bl_label = "Update Viewport LOD"
     bl_options = {'REGISTER', 'UNDO'}
@@ -95,7 +95,7 @@ class LOD_OT_ViewportLODUpdate(bpy.types.Operator):
         return {'FINISHED'}
     
 class LOD_OT_ViewportLODReset(bpy.types.Operator):
-    """恢复物体原本的显示模式"""
+    """Restore Original Display Mode"""
     bl_idname = "lod.viewport_lod_reset"
     bl_label = "Reset Viewport"
     bl_options = {'REGISTER', 'UNDO'}

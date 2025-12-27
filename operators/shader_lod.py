@@ -3,7 +3,7 @@ import time
 from mathutils import Vector
 
 class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
-    """异步更新材质 Shader 细节 (法线/置换)"""
+    """Update shader details (Normal/Displacement) asynchronously"""
     bl_idname = "lod.shader_lod_update_async"
     bl_label = "Update Shader LOD (Async)"
     bl_options = {'REGISTER', 'UNDO'}
@@ -179,7 +179,7 @@ class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
 
 
 class LOD_OT_ShaderLODReset(bpy.types.Operator):
-    """恢复材质原始参数"""
+    """Restore original shader parameters"""
     bl_idname = "lod.shader_lod_reset"
     bl_label = "Reset Shader Parameters"
     bl_options = {'REGISTER', 'UNDO'}
