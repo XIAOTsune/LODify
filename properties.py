@@ -5,7 +5,7 @@ from bpy.props import (
     StringProperty, BoolProperty, IntProperty, FloatProperty, 
     EnumProperty, CollectionProperty, PointerProperty
 )
-
+from .i18n import i18n
 # --- Collection Items ---
 class LOD_ImageItem(bpy.types.PropertyGroup):
     lod_image_name: StringProperty()
@@ -24,7 +24,10 @@ class LOD_Props(bpy.types.PropertyGroup):
     
     colA_Method: EnumProperty(
         name="Method", 
-        items=[('m1', 'Default', ''), ('m2', 'Advanced', '')],
+        items=[
+            ('m1', i18n('Default'), ''), 
+            ('m2', i18n('Advanced'), '')
+        ],
         default='m1'
     )
     # Analyzer Thresholds
@@ -46,7 +49,7 @@ class LOD_Props(bpy.types.PropertyGroup):
         name="Target Size",
         items=[
             ('128', '128 px', ''), ('256', '256 px', ''), ('512', '512 px', ''),
-            ('1024', '1024 px', ''), ('2048', '2048 px', ''), ('c', 'Custom', '')
+            ('1024', '1024 px', ''), ('2048', '2048 px', ''), ('c',i18n('Custom'), '')
         ],
         default='1024'
     )

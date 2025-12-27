@@ -1,14 +1,13 @@
 import bpy
 from .. import utils
 import json
-from ..i18n import ADDON_DOMAIN
 
 class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
     """Analyzes collection vertex counts and color-codes them"""
     bl_idname = "lod.collectionanalyzer"
     bl_label = "Run Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
-    bl_translation_context = ADDON_DOMAIN
+
 
     def execute(self, context):
         scn = context.scene.lod_props
@@ -82,7 +81,7 @@ class LOD_OT_CleanColors(bpy.types.Operator):
     bl_idname = "lod.cleancolors"
     bl_label = "Clear Analyzer"
     bl_options = {'REGISTER', 'UNDO'}
-    bl_translation_context = ADDON_DOMAIN
+
 
     def execute(self, context):
         scn = context.scene.lod_props
@@ -117,7 +116,7 @@ class LOD_OT_ViewAnalyzer(bpy.types.Operator):
     """Analyzes objects in 3D view and color-codes by density"""
     bl_idname = "lod.viewanalyzer"
     bl_label = "Run 3D View Analyzer"
-    bl_translation_context = ADDON_DOMAIN
+
 
     def execute(self, context):
         scn = context.scene.lod_props
@@ -147,7 +146,7 @@ class LOD_OT_CleanViewAnalyzer(bpy.types.Operator):
     """Clear View Analyzer"""
     bl_idname = "lod.cleanviewanalyzer"
     bl_label = "Clear View Analyzer"
-    bl_translation_context = ADDON_DOMAIN
+
     
     def execute(self, context):
         scn = context.scene.lod_props

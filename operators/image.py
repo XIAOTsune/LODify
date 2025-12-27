@@ -8,7 +8,6 @@ import gc
 import subprocess # 替代 threading
 import sys        # 用于获取 python 解释器路径
 from .. import utils
-from ..i18n import ADDON_DOMAIN
 
 # 延迟导入pil
 def check_pil_available():
@@ -26,7 +25,7 @@ def check_pil_available():
 class LOD_OT_UpdateImageList(bpy.types.Operator):
     bl_idname = "lod.updateimagelist"
     bl_label = "Update Image List"
-    bl_translation_context = ADDON_DOMAIN
+
 
     def execute(self, context):
         scn = context.scene.lod_props
@@ -96,7 +95,6 @@ class LOD_OT_UpdateImageList(bpy.types.Operator):
 class LOD_OT_SelectAllImages(bpy.types.Operator):
     bl_idname = "lod.imglistselectall"
     bl_label = "Select All"
-    bl_translation_context = ADDON_DOMAIN
 
     def execute(self, context):
         scn = context.scene.lod_props
@@ -112,14 +110,12 @@ class LOD_OT_SelectAllImages(bpy.types.Operator):
 
 class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
     """
-    修改说明：
-    使用 subprocess 替代 threading。调用外部 worker.py 脚本处理图片。
-    更稳定，符合 Blender 插件审核规范。
+    Use subprocess to call an external worker.py script for image processing.
     """
     bl_idname = "lod.resizeimages_async"
     bl_label = "Resize Images (Async)"
     bl_options = {'REGISTER', 'UNDO'}
-    bl_translation_context = ADDON_DOMAIN
+
 
     _timer = None
     _task_queue = []        # 待处理任务 (字典列表)
@@ -402,7 +398,6 @@ class LOD_OT_ClearDuplicateImage(bpy.types.Operator):
     bl_idname = "lod.clearduplicateimage"
     bl_label = "Clear Duplicate Images"
     bl_options = {'REGISTER', 'UNDO'}
-    bl_translation_context = ADDON_DOMAIN
 
     def execute(self, context):
         cleaned_count = 0
@@ -453,7 +448,6 @@ class LOD_OT_DeleteTextureFolder(bpy.types.Operator):
     bl_label = "Delete Folder"
     bl_options = {'REGISTER', 'UNDO'} 
     folder_name: bpy.props.StringProperty() 
-    bl_translation_context = ADDON_DOMAIN
 
     def execute(self, context):
         base_path = bpy.path.abspath("//")
@@ -519,7 +513,6 @@ class LOD_OT_SwitchResolution(bpy.types.Operator):
     bl_idname = "lod.switch_resolution"
     bl_label = "Switch Texture Resolution"
     bl_options = {'REGISTER', 'UNDO'}
-    bl_translation_context = ADDON_DOMAIN
 
     target_res: bpy.props.StringProperty()
 
@@ -612,7 +605,6 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
     bl_idname = "lod.optimize_by_camera"
     bl_label = "Optimize by Camera (Async)"
     bl_options = {'REGISTER', 'UNDO'}
-    bl_translation_context = ADDON_DOMAIN
     
     _timer = None
     _queue = []       # 待处理任务

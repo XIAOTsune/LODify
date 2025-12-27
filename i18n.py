@@ -1,13 +1,9 @@
 import bpy
 
-# =============================================================================
-# 翻译字典
-# key: 代码中出现的完整英文 (必须一字不差)
-# value: 对应的中文翻译
-# =============================================================================
 
 translations = {
-    "zh_CN": {
+    "zh_HANS": {
+        "*": {
         # --- Header ---
         "LODify": "LODify 优化工具",
         
@@ -153,13 +149,22 @@ translations = {
         "Displacement Scale Multipliers": "置换强度倍率",
         "Update Shaders": "更新材质",
         "Reset Shader Parameters": "重置材质参数",
+        }
     }
 }
 ADDON_DOMAIN = "lodify.i18n.context"
 
 def register():
+    # 注册翻译字典
     bpy.app.translations.register(ADDON_DOMAIN, translations)
-    print(f"[LODify] Registered i18n with Fixed Domain: '{ADDON_DOMAIN}'")
 
 def unregister():
     bpy.app.translations.unregister(ADDON_DOMAIN)
+
+# 添加这个辅助函数 ---
+def i18n(msg):
+    """
+    UI 调用的简写函数。
+    它会去查找 ADDON_DOMAIN 下的翻译。
+    """
+    return bpy.app.translations.pgettext(msg, ADDON_DOMAIN)
