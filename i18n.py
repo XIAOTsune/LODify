@@ -1,24 +1,33 @@
-
 import bpy
 
 # =============================================================================
-# 翻译字典 (Translation Dictionary)
-# =============================================================================
-# 格式: {locale: {key: translation, ...}}
-# key (英文原文) 必须与 properties.py 和 UI 中的英文完全一致
+# 翻译字典
+# key: 代码中出现的完整英文 (必须一字不差)
+# value: 对应的中文翻译
 # =============================================================================
 
 translations = {
     "zh_CN": {
-        # --- Header & General ---
+        # --- Header ---
         "LODify": "LODify 优化工具",
-        "Optimize Tools": "优化工具箱",
-        "Total": "总计",
-        "Mem": "显存",
+        
+        # --- Panels (注意：如果UI里写的是 "1. Collection Analyzer"，这里必须完全一致) ---
+        "1. Collection Analyzer": "1. 集合分析器",
+        "2. View Analyzer": "2. 视图分析器",
+        "3. Image Resizer": "3. 贴图缩放管理",
+        "4. LOD Manager": "4. LOD 层级管理",
+        "5. Clean Up & Storage": "5. 清理与存储",
+        "6. Experimental Features": "6. 实验性功能",
+
+        # --- General Buttons & Labels ---
         "Method": "算法/方法",
         "Target": "目标",
         "Output": "输出",
-        
+        "Total": "总计",
+        "Mem": "显存",
+        "Default": "默认",
+        "Advanced": "高级",
+
         # --- Collection Analyzer ---
         "Collection Analyzer": "集合分析器",
         "Run Analyzer": "运行分析",
@@ -26,21 +35,21 @@ translations = {
         "Color Thresholds (Vertex %)": "颜色阈值 (顶点百分比)",
         "Analyzes collection vertex counts and color-codes them": "分析集合的顶点数量并进行颜色标记",
         "Restores original collection names and colors": "恢复原始的集合名称和颜色",
-        
+
         # --- View Analyzer ---
         "View Analyzer": "视图分析器",
         "Run 3D View Analyzer": "运行视图分析",
         "Analyzes objects in 3D view and color-codes by density": "分析3D视图中的物体并按密度着色",
         "Clear View Analyzer": "清除视图分析",
-        
+
         # --- Image Resizer ---
-        "Image Resizer": "贴图缩放管理",
         "Scan / Refresh Images": "扫描 / 刷新图片列表",
         "Select All/None": "全选 / 反选",
         "Resize Selected Images": "缩放选中图片",
         "Original": "原图",
         "Auto-Opt": "自动",
         "Target Size": "目标尺寸",
+        "Pixels": "像素", 
         "Custom Px": "自定义像素",
         "Safe Mode (Copy Files)": "安全模式 (另存副本)",
         "Duplicate Files": "保留副本",
@@ -52,10 +61,13 @@ translations = {
         "AI / Camera Optimization": "AI / 相机视角优化",
         "Auto-calculate size based on screen coverage": "基于屏幕占比自动计算尺寸",
         "Switch Texture Resolution": "切换贴图分辨率",
+        "Texture Switcher (Global)": "全局贴图切换",
         "Switch to": "切换到",
-        
+        "Resize Options:": "缩放选项:",
+        "Total Images": "图片总数",
+        "Total Memory": "总显存占用",
+
         # --- LOD Manager ---
-        "LOD Manager": "LOD 层级管理",
         "LOD Camera": "LOD 计算相机",
         "Camera used for screen coverage calculation": "用于计算屏幕占比的参考相机",
         "LOD Distance Levels (For Viewport)": "LOD 距离分级 (仅影响视窗)",
@@ -65,7 +77,7 @@ translations = {
         "High Detail End Distance": "高精度显示的结束距离",
         "Mid Detail End Distance": "中精度显示的结束距离",
         "Low Detail End Distance": "低精度显示的结束距离",
-        
+
         # --- Viewport Optimization ---
         "Viewport Optimization": "视窗显示优化",
         "Enable Viewport LOD": "启用视窗 LOD",
@@ -76,11 +88,20 @@ translations = {
         "Reset Viewport": "重置视窗",
         "Restore objects to original display mode": "将物体恢复为原始显示模式",
         "Hide at L3": "L3 级隐藏",
+        "Hide Far Objects": "隐藏极远物体",
         "Hide objects completely at far distance": "在极远距离完全隐藏物体",
-        
+        "Textured": "材质预览",
+        "Solid": "实体显示",
+        "Wire": "线框显示",
+        "Bounds": "包围盒",
+        "Full Material": "完整材质",
+        "Solid Shading": "实体显示",
+        "Wireframe": "线框显示",
+        "Bounding Box (Fastest)": "包围盒 (最快)",
+
         # --- Geometry LOD ---
         "Geometry LOD (Screen Ratio)": "几何体 LOD (屏幕占比模式)",
-        "Geometry LOD": "几何体 LOD",
+        "Enable": "启用",
         "Enable Geometry LOD": "启用几何体 LOD",
         "Enable screen ratio based decimation": "启用基于屏幕占比的自动减面",
         "Setup Modifiers": "安装修改器",
@@ -93,6 +114,10 @@ translations = {
         "Apply Decimate (Destructive)": "应用减面 (不可逆)",
         "Apply GeoNodes (Destructive)": "应用几何节点 (不可逆)",
         "Apply modifiers permanently": "永久应用修改器",
+        "Decimate Modifier": "减面修改器",
+        "Geometry Nodes": "几何节点 (高质量)",
+        "Use standard Decimate modifier": "使用标准减面修改器",
+        "Use Geometry Nodes (High Quality)": "使用几何节点 (高质量)",
         
         # Parameters
         "Min Faces (Safety)": "最小面数保护",
@@ -105,9 +130,8 @@ translations = {
         "Merge radius at furthest distance (Higher = More aggressive)": "最远距离时的顶点合并半径 (值越大减面越狠)",
         "Auto Edge Protection": "自动边缘保护 (智能)",
         "Distance-based Collapse": "基于距离的空间塌陷",
-        
+
         # --- Cleanup ---
-        "Clean Up & Storage": "清理与存储",
         "Data Cleanup": "数据清理",
         "Disk Storage Management": "磁盘存储管理",
         "Merge Duplicate Images (.001)": "合并重复贴图 (.001)",
@@ -119,9 +143,9 @@ translations = {
         "Found": "发现",
         "Texture Sets": "组贴图缓存",
         "(No resized sets found)": "(未找到已生成的尺寸组)",
-        
+        "No generated folders found.": "未找到已生成的贴图文件夹。",
+
         # --- Experimental ---
-        "Experimental Features": "实验性功能",
         "Shader Detail LOD": "材质细节 LOD",
         "Enable Shader LOD": "启用材质 LOD",
         "Reduce normal/displacement strength based on distance": "根据距离降低法线/置换强度",
@@ -129,31 +153,11 @@ translations = {
         "Displacement Scale Multipliers": "置换强度倍率",
         "Update Shaders": "更新材质",
         "Reset Shader Parameters": "重置材质参数",
-        
-        # --- Common Enums & Status ---
-        "Default": "默认",
-        "Advanced": "高级",
-        "Solid Shading": "实体显示",
-        "Wireframe": "线框显示",
-        "Bounding Box (Fastest)": "包围盒 (最快)",
-        "Textured": "材质预览",
-        "Full Material": "完整材质",
-        "Decimate Modifier": "减面修改器",
-        "Geometry Nodes": "几何节点 (高质量)",
-        "Use standard Decimate modifier": "使用标准减面修改器",
-        "Use Geometry Nodes (High Quality)": "使用几何节点 (高质量)",
     }
 }
 
 def register():
-    # 注册翻译
     bpy.app.translations.register(__name__, translations)
 
 def unregister():
     bpy.app.translations.unregister(__name__)
-
-def tr(msg):
-    """
-    辅助函数：在 UI 代码中手动调用翻译
-    """
-    return bpy.app.translations.pgettext_iface(msg)
