@@ -306,6 +306,28 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def spawn_worker_process(self, task):
+
+        # --- 显式查找 PIL 路径 ---
+        import sys
+        import os
+        
+        # 1. 复制当前的 sys.path
+        current_paths = sys.path.copy()
+        
+        # 2. 显式获取 PIL 安装位置并加入路径
+        # 因为 Blender Extension 的路径可能不在标准的 sys.path 字符串列表中
+        try:
+            import PIL
+            # PIL.__file__ 通常是 .../site-packages/PIL/__init__.py
+            # 我们需要拿到 .../site-packages 这个父级目录
+            pil_path = os.path.dirname(os.path.dirname(PIL.__file__))
+            
+            # 将这个路径插到最前面，确保子进程优先找到它
+            if pil_path not in current_paths:
+                current_paths.insert(0, pil_path)
+                print(f"[LODify] Injecting dependency path: {pil_path}")
+        except ImportError:
+            pass
         """启动一个子进程来执行任务"""
         # 构建命令： python worker.py --src ... --dst ...
         cmd = [
@@ -316,7 +338,10 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
             "--size", str(task["target_size"]),
             "--action", task["action"]
         ]
-        
+
+        # 构建环境变量，确保子进程能找到主进程已安装的 wheels
+        my_env = os.environ.copy()
+        my_env["PYTHONPATH"] = os.pathsep.join(current_paths)
         try:
             # 启动子进程，接管 stdout 和 stderr
             # text=True 确保返回字符串而不是字节
@@ -326,7 +351,8 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE,
                 text=True,
-                encoding='utf-8' # 强制编码
+                encoding='utf-8', # 强制编码
+                env=my_env
             )
             self._active_processes.append((proc, task))
             
@@ -717,6 +743,20 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def spawn_worker_process(self, task):
+        # --- 显式查找 PIL 路径  ---
+        import sys
+        import os
+        
+        current_paths = sys.path.copy()
+        
+        try:
+            import PIL
+            pil_path = os.path.dirname(os.path.dirname(PIL.__file__))
+            if pil_path not in current_paths:
+                current_paths.insert(0, pil_path)
+        except ImportError:
+            pass
+
         cmd = [
             sys.executable, 
             self._worker_script,
@@ -725,13 +765,19 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
             "--size", str(task["target_size"]),
             "--action", task["action"]
         ]
+
+        # 构建环境变量
+        my_env = os.environ.copy()
+        my_env["PYTHONPATH"] = os.pathsep.join(current_paths)
+
         try:
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE,
                 text=True,
-                encoding='utf-8'
+                encoding='utf-8',
+                env=my_env
             )
             self._active_processes.append((proc, task))
         except Exception as e:

@@ -10,6 +10,16 @@ import os
 # 核心分析逻辑与UI布局参考了 Rodrigo Gama 的 "ToOptimize Tools"。
 # 本插件 (LODify) 在此基础上进行了重构，并新增了几何节点集成、异步处理及相机优化等功能。
 # =============================================================================
+HAS_PILLOW = False
+
+try:
+    # 只要在 manifest 中正确声明了 wheels，Blender 安装时会自动处理环境
+    # 无需任何 sys.path 手动操作
+    from PIL import Image, ImageOps
+    HAS_PILLOW = True
+except ImportError:
+    HAS_PILLOW = False
+    print("LODify: Pillow not found. Image resizing features will be limited.")
 
 
 ADDON_WEBSITE_URL = "https://github.com/XIAOTsune/LODify" # 默认值
@@ -56,7 +66,7 @@ def load_manifest_info():
 bl_info = {
     "name": "LODify",
     "author": "小T_sune",
-    "version": (2, 2, 0),
+    "version": (2, 5, 0),
     "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
     "description": "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt",

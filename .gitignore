@@ -14,3 +14,4 @@ requirements.txt（可选，若需共享则不忽略）
 
 merge.py
 project_context.txt
+wheels/
