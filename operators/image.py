@@ -1,5 +1,3 @@
-# File Path: .\operators\image.py
-
 import os
 import bpy
 import shutil
@@ -17,7 +15,7 @@ def check_pil_available():
     """
     try:
         import PIL
-        from PIL import Image # 确保 Image 也能引用
+        from PIL import Image
         return True
     except ImportError:
         return False
@@ -140,8 +138,10 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
                 
                 if ret_code is not None:
                     # 进程已结束，获取输出
-                    # communicate 会阻塞，但因为 poll 已经确认结束，所以这里会瞬间完成
-                    stdout_data, stderr_data = proc.communicate()
+                    try:
+                        stdout_data, stderr_data = proc.communicate(timeout=0.2)
+                    except:
+                        stdout_data, stderr_data = "", ""
                     
                     if ret_code == 0 and "SUCCESS" in stdout_data:
                         # 成功：在主线程刷新图片
@@ -149,12 +149,14 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
                     else:
                         # 失败：打印错误
                         img_name = task_data["img_name"]
-                        err_msg = stderr_data if stderr_data else stdout_data
-                        print(f"[LODify] Worker Failed for {img_name}: {err_msg}")
-                        # 可选：如果是因为没装 PIL 导致的失败，可以考虑在这里触发回退逻辑
+                        print(f"[LODify] Worker Failed for {img_name} (Code {ret_code}). Fallback to Native.")
+                        if stderr_data: print(f"  Debug: {stderr_data}")
                         # 但为了代码简单，这里只做报错
-                    
-                    self._processed += 1
+                        # 将任务模式改为 "NATIVE" 并放回队列头部
+                        task_data["method"] = "NATIVE"
+                        self._task_queue.insert(0, task_data)
+                        ## 统计数不增加，只移除失败的进程
+
                     # 从活动列表中移除
                     self._active_processes.pop(i)
 
@@ -208,7 +210,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
         # worker.py 在 addons/LODify/worker.py
         current_dir = os.path.dirname(os.path.abspath(__file__)) # .../operators
         root_dir = os.path.dirname(current_dir)                  # .../LODify
-        self._worker_script = os.path.join(root_dir, "worker.py")
+        self._worker_script = os.path.join(root_dir, "core", "image_worker.py")
         
         if not os.path.exists(self._worker_script):
             self.report({'ERROR'}, f"Worker script not found at: {self._worker_script}")
@@ -307,38 +309,24 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
 
     def spawn_worker_process(self, task):
 
-        # --- 显式查找 PIL 路径 ---
         import sys
         import os
         
         # 1. 复制当前的 sys.path
-        current_paths = sys.path.copy()
+        python_args = []
+        if hasattr(bpy.app, "python_args"):
+            # 同样过滤掉 "-I"
+            python_args = [arg for arg in bpy.app.python_args if arg != "-I"]
         
-        # 2. 显式获取 PIL 安装位置并加入路径
-        # 因为 Blender Extension 的路径可能不在标准的 sys.path 字符串列表中
-        try:
-            import PIL
-            # PIL.__file__ 通常是 .../site-packages/PIL/__init__.py
-            # 我们需要拿到 .../site-packages 这个父级目录
-            pil_path = os.path.dirname(os.path.dirname(PIL.__file__))
-            
-            # 将这个路径插到最前面，确保子进程优先找到它
-            if pil_path not in current_paths:
-                current_paths.insert(0, pil_path)
-                print(f"[LODify] Injecting dependency path: {pil_path}")
-        except ImportError:
-            pass
         """启动一个子进程来执行任务"""
         # 构建命令： python worker.py --src ... --dst ...
-        cmd = [
-            sys.executable,  # 使用 Blender 自带的 Python
-            self._worker_script,
+        cmd = [sys.executable] + python_args + [self._worker_script] + [
             "--src", task["src_path"],
             "--dst", task["dst_path"],
             "--size", str(task["target_size"]),
             "--action", task["action"]
         ]
-
+        current_paths = [os.path.abspath(p) for p in sys.path]
         # 构建环境变量，确保子进程能找到主进程已安装的 wheels
         my_env = os.environ.copy()
         my_env["PYTHONPATH"] = os.pathsep.join(current_paths)
@@ -359,8 +347,8 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
         except Exception as e:
             print(f"Failed to spawn worker: {e}")
             # 如果启动失败，尝试降级到 Native 处理（或者标记失败）
-            # 这里简单处理为标记完成
-            self._processed += 1
+            task["method"] = "NATIVE"
+            self._task_queue.insert(0, task)
 
     def handle_worker_success(self, task):
         """子进程成功后的回调"""
@@ -664,7 +652,17 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
                         if ret_code == 0 and "SUCCESS" in stdout_data:
                             self.handle_worker_success(task_data)
                         else:
-                             print(f"CamOpt Worker Failed: {stderr_data or stdout_data}")
+                            # 失败处理：直接在当前帧转 Native 执行
+                            print(f"[LOD] CamOpt Worker Failed (Code {ret_code}). Debug: {stderr_data}")
+                            print("Switched to Native fallback.")
+                            # 强制修改方法并立即执行
+                            task_data["method"] = "NATIVE"
+
+                            try:
+                                self.process_native_fallback(task_data)
+                            except Exception as e:
+                                print(f"Native Fallback Error: {e}")    
+                               
                         self._processed += 1
                         self._active_processes.pop(i)
                 
@@ -678,24 +676,26 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
                     if (time.time() - start_time) > self.TIME_BUDGET:
                         break
                     
-                    # 预读
+                    # 检查进程池空间
+                    if len(self._active_processes) >= self.MAX_PROCESSES:
+                        break
+
+                    # 取出任务 (img object, pixel_int)
                     img, req_px = self._queue[0]
                     task_data = self.prepare_task_data(img, req_px)
-                    self._queue.pop(0) # 移除
+                    
+                    # 移除队列头
+                    self._queue.pop(0)
 
                     if not task_data:
+                        # 缓存已存在，跳过
                         self._processed += 1 
                         continue
                         
                     if task_data["method"] == "PIL":
-                        if len(self._active_processes) < self.MAX_PROCESSES:
-                            self.spawn_worker_process(task_data)
-                        else:
-                            # 塞回队列头等待下一次
-                            self._queue.insert(0, (img, req_px)) 
-                            break 
+                        self.spawn_worker_process(task_data)
                     else:
-                        # Native
+                        # Native 任务直接跑
                         try:
                             self.process_native_fallback(task_data)
                         except Exception as e:
@@ -726,7 +726,7 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         # 查找 worker 路径
         current_dir = os.path.dirname(os.path.abspath(__file__))
         root_dir = os.path.dirname(current_dir)
-        self._worker_script = os.path.join(root_dir, "worker.py")
+        self._worker_script = os.path.join(root_dir, "core", "image_worker.py")
 
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.01, window=context.window)
@@ -747,19 +747,16 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         import sys
         import os
         
-        current_paths = sys.path.copy()
-        
-        try:
-            import PIL
-            pil_path = os.path.dirname(os.path.dirname(PIL.__file__))
-            if pil_path not in current_paths:
-                current_paths.insert(0, pil_path)
-        except ImportError:
-            pass
+        # 1. 准备 Python 参数
+        python_args = []
+        if hasattr(bpy.app, "python_args"):
+            # 只要不是 "-I" 的参数都保留。去掉 -I 后，子进程才会读取 PYTHONPATH
+            python_args = [arg for arg in bpy.app.python_args if arg != "-I"]
 
-        cmd = [
-            sys.executable, 
-            self._worker_script,
+        current_paths = [os.path.abspath(p) for p in sys.path]
+        
+        # 2. 构建命令
+        cmd = [sys.executable] + python_args + [self._worker_script] + [
             "--src", task["src_path"],
             "--dst", task["dst_path"],
             "--size", str(task["target_size"]),
@@ -767,6 +764,7 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         ]
 
         # 构建环境变量
+        current_paths = [os.path.abspath(p) for p in sys.path]
         my_env = os.environ.copy()
         my_env["PYTHONPATH"] = os.pathsep.join(current_paths)
 
@@ -782,6 +780,10 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
             self._active_processes.append((proc, task))
         except Exception as e:
             print(f"Failed to spawn worker: {e}")
+            # 启动失败直接转 Native 执行
+            try:
+                self.process_native_fallback(task)
+            except: pass
             self._processed += 1
 
     def handle_worker_success(self, res):

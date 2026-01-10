@@ -36,8 +36,6 @@ try:
     import tomllib
 except ImportError:
     # 兼容低版本 Python (虽然 Blender 5.0 不会进这里)
-    import pip
-    # 这里不做自动安装逻辑，仅作防错
     tomllib = None
 
 
@@ -66,13 +64,13 @@ def load_manifest_info():
 bl_info = {
     "name": "LODify",
     "author": "小T_sune",
-    "version": (2, 5, 0),
+    "version": (2, 6, 0),
     "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
     "description": "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt",
     "warning": "",
     "doc_url": "https://github.com/XIAOTsune/LODify",
-    "category": "3D View",
+    "category": "Object",
 }
 
 # 模块列表

@@ -4,6 +4,21 @@ import argparse
 import shutil
 import platform
 
+
+# =============================================================================
+# LODify Internal Component: Image Worker Process
+# =============================================================================
+# IMPORTANT:
+# This file is a critical RUNTIME COMPONENT of the LODify add-on.
+# It is executed via subprocess.Popen() to handle computationally expensive
+# image processing tasks (Resizing/Format Conversion) asynchronously.
+#
+# Segregating this logic into a separate process allows LODify to bypass 
+# Blender's Global Interpreter Lock (GIL) and prevents the UI from freezing
+# when processing hundreds of high-resolution textures.
+#
+# This is NOT a development script. DO NOT REMOVE.
+# =============================================================================
 # =============================================================================
 # Library Check (由 Blender 扩展环境自动提供)
 # =============================================================================
@@ -14,6 +29,11 @@ except ImportError:
     HAS_PIL = False
 
 def run_worker():
+    # 参数切片处理
+    # 如果 sys.argv 中包含 "--"，则只取它后面的部分
+    argv = sys.argv
+    if "--" in argv:
+        argv = argv[argv.index("--") + 1:]
     # 1. 解析命令行参数
     parser = argparse.ArgumentParser(description="LODify Image Worker")
     parser.add_argument("--src", required=True, help="Source image path")
