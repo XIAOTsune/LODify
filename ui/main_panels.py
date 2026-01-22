@@ -51,6 +51,9 @@ class LOD_PT_CollectionAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
             r = col.row(); r.label(text="", icon='COLLECTION_COLOR_04'); r.prop(scn, "mult_low", slider=True)
             r = col.row(); r.label(text="", icon='COLLECTION_COLOR_05'); r.prop(scn, "mult_very_low", slider=True)
 
+        # 热力图颜色开关
+        layout.prop(scn, "CA_use_heatmap", text=i18n("Use Heatmap Colors"))
+        
         layout.separator()
         row = layout.row(align=True)
         row.scale_y = 1.2

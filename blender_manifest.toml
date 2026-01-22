@@ -2,7 +2,7 @@ schema_version = "1.0.0"
 
 
 id = "lodify_optimizer"
-version = "2.6.0"
+version = "2.7.0"
 name = "LODify"
 tagline = "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt"
 maintainer = "XIAOTsune"

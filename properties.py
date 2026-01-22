@@ -21,6 +21,11 @@ class LOD_Props(bpy.types.PropertyGroup):
     # ==========================================================
     CA_Toggle: BoolProperty(default=False, name="Collection Analyzer Toggle")
     AA_Toggle: BoolProperty(default=False, name="Scene Analyzer Toggle")
+    CA_use_heatmap: BoolProperty(
+        default=True, 
+        name="Use Heatmap Colors",
+        description="If disabled, analyzer will only add percentage suffix without changing collection colors"
+    )
     
     colA_Method: EnumProperty(
         name="Method", 

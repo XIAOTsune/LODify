@@ -48,6 +48,8 @@ ZH_DICT = {
     "Run Analyzer": "运行分析",
     "Clear Analyzer": "清除结果",
     "Color Thresholds (Vertex %)": "颜色阈值 (顶点百分比)",
+    "Use Heatmap Colors": "使用热力图颜色",
+    "If disabled, analyzer will only add percentage suffix without changing collection colors": "如果禁用，分析器只会添加百分比后缀，不会改变集合颜色",
 
     # --- View Analyzer ---
     "View Analyzer": "视图分析器",

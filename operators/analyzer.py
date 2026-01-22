@@ -29,6 +29,7 @@ class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
         backup = {}
         scene_total_verts = 0
         max_col_verts = 0
+        use_heatmap = scn.CA_use_heatmap  # 是否使用热力图颜色
 
         # 3. 统计全场景
         for obj in context.view_layer.objects:
@@ -39,9 +40,12 @@ class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
 
         # 4. 遍历集合
         for col in bpy.data.collections:
-            # 备份原始颜色
+            # 备份原始颜色（无论是否使用热力图都需要备份，以便还原名称时使用）
             backup[col.name] = col.color_tag
-            col.color_tag = 'NONE' # 重置
+            
+            # 只在使用热力图模式时重置颜色
+            if use_heatmap:
+                col.color_tag = 'NONE' # 重置
 
             # 计算该集合顶点数
             v_count = utils.get_collection_vertex_count(col)
@@ -53,23 +57,18 @@ class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
                 percent = (v_count / scene_total_verts) * 100.0
                 col.name = f"{col.name} | {percent:.1f}%"
 
-                # 4.2 颜色判定 (相对于场景中最大的集合，或者固定阈值? 旧逻辑是用 max_col_verts 作为基准)
-                # 但旧逻辑是在循环里动态更新 highest_col，这里为了准确，应该用 scene_total_verts 或预设大数值
-                # 这里采用：基于当前集合占总场景的比例，或者基于绝对数量。
-                # 移植 v2 逻辑：它是动态对比 highest_col (但在循环里 highest 还没算完)。
-                # 让我们改良一下：使用 v_count / scene_total_verts 的比例来染色会更直观。
-                # 或者使用绝对数量 (比如 100万面)。这里为了复刻 v2 效果，我们简化逻辑：
-                
-                # 假设基准：如果占场景总量的比例超过阈值
-                ratio = v_count / scene_total_verts
-                
-                # 这里稍微调整逻辑以适应滑块：
-                # 如果我们把滑块当做百分比阈值 (0.9 = 90% vertices)
-                if ratio >= m_vhigh: col.color_tag = 'COLOR_01'   # Red
-                elif ratio >= m_high: col.color_tag = 'COLOR_02'  # Orange
-                elif ratio >= m_med: col.color_tag = 'COLOR_03'   # Yellow
-                elif ratio >= m_low: col.color_tag = 'COLOR_04'   # Green
-                else: col.color_tag = 'COLOR_05'                  # Blue
+                # 4.2 颜色判定（仅在启用热力图时）
+                if use_heatmap:
+                    # 假设基准：如果占场景总量的比例超过阈值
+                    ratio = v_count / scene_total_verts
+                    
+                    # 这里稍微调整逻辑以适应滑块：
+                    # 如果我们把滑块当做百分比阈值 (0.9 = 90% vertices)
+                    if ratio >= m_vhigh: col.color_tag = 'COLOR_01'   # Red
+                    elif ratio >= m_high: col.color_tag = 'COLOR_02'  # Orange
+                    elif ratio >= m_med: col.color_tag = 'COLOR_03'   # Yellow
+                    elif ratio >= m_low: col.color_tag = 'COLOR_04'   # Green
+                    else: col.color_tag = 'COLOR_05'                  # Blue
 
         # 保存备份
         scn.default_col_colors = json.dumps(backup)
@@ -101,11 +100,10 @@ class LOD_OT_CleanColors(bpy.types.Operator):
             if ' | ' in col.name:
                 col.name = col.name.split(' | ')[0].strip()
             
-            # 2. 还原颜色
+            # 2. 还原颜色（仅当有备份数据时）
             if col.name in data:
                 col.color_tag = data[col.name]
-            else:
-                col.color_tag = 'NONE'
+            # 不再强制设为 NONE，保持原样
 
         scn.CA_Toggle = False
         scn.default_col_colors = ""
