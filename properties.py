@@ -10,6 +10,7 @@ from .i18n import i18n
 class LOD_ImageItem(bpy.types.PropertyGroup):
     lod_image_name: StringProperty()
     image_size: StringProperty()
+    image_dimensions: StringProperty()  # 存储图片尺寸 (如 "1024 x 1024")
     image_selected: BoolProperty(default=False)
     packed_img: IntProperty(default=0) # 0:File, 1:Packed, 2:Linked
 

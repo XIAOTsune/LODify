@@ -9,6 +9,7 @@ from .. import utils
 # =============================================================================
 DECIMATE_MOD_NAME = "LOD_DECIMATE"
 GEO_NODES_MOD_NAME = "LOD_GEO_LOD"
+GN_GROUP_NAME = "LOD_GEO_LOD_Advanced"  # 几何节点组名称
 GN_INPUT_FACTOR = "LOD_Factor"      # 接口1：强度
 GN_INPUT_ANGLE = "Angle_Threshold" 
 GN_INPUT_MAX_DIST = "Max_Merge_Dist" # 接口2：角度阈值
@@ -23,7 +24,7 @@ def ensure_lod_node_group():
     """
     创建/更新 LOD 节点组 (Geometry Nodes) - V3 空间塌陷版 (修复兼容性)
     """
-    name = "LOD_GEO_LOD_Advanced" 
+    name = GN_GROUP_NAME
     group = bpy.data.node_groups.get(name)
     
     if not group:
@@ -306,7 +307,7 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
             force_rebuild = False
             
             # 检查是否使用了旧版节点组
-            if mod and mod.node_group and mod.node_group.name != "LOD_GEO_LOD_Advanced":
+            if mod and mod.node_group and mod.node_group.name != GN_GROUP_NAME:
                 force_rebuild = True
             # 检查接口数量
             if mod and mod.node_group and self.lod_group and \
@@ -405,7 +406,7 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
         self.gn_id_dist = None
         
         if method == 'GNODES':
-            group = bpy.data.node_groups.get("LOD_GEO_LOD_Advanced")
+            group = bpy.data.node_groups.get(GN_GROUP_NAME)
             self.gn_id_factor = get_input_identifier(group, GN_INPUT_FACTOR)
             self.gn_id_dist = get_input_identifier(group, GN_INPUT_MAX_DIST)
 

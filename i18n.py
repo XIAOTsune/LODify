@@ -120,6 +120,8 @@ ZH_DICT = {
     "Data Cleanup": "数据清理",
     "Disk Storage Management": "磁盘存储管理",
     "Merge Duplicate Images (.001)": "合并重复贴图 (.001)",
+    "Clean Unused Material Slots": "清理未使用材质插槽",
+    "Remove material slots that are not used by any face/spline": "移除未被任何面/样条使用的材质插槽",
     "Clear Duplicate Images": "清理重复贴图",
     "Delete Folder": "删除文件夹",
     "Save file to see texture folders": "保存文件后可见贴图文件夹",

@@ -320,6 +320,8 @@ class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
         col = box.column(align=True)
         # 翻译: 合并重复贴图 (.001)
         col.operator("lod.clearduplicateimage", text=i18n("Merge Duplicate Images (.001)"), icon='TRASH')
+        # 翻译: 清理未使用材质插槽
+        col.operator("lod.clean_unused_material_slots", text=i18n("Clean Unused Material Slots"), icon='MATERIAL')
 
         box = layout.box()
         # 翻译: 磁盘存储管理
@@ -400,7 +402,7 @@ class LOD_PT_Experimental(LOD_PT_MainPanel, bpy.types.Panel):
             row.operator("lod.shader_lod_update_async", text=i18n("Update Shaders"), icon='PLAY')
             # 翻译: 重置
             row.operator("lod.shader_lod_reset", text=i18n("Reset"), icon='LOOP_BACK')
-classs = (
+classes = (
     LOD_PT_Header,
     LOD_PT_CollectionAnalyzer,
     LOD_PT_ViewAnalyzer,
@@ -411,9 +413,9 @@ classs = (
 )
 
 def register():
-    for cls in classs:
+    for cls in classes:
         bpy.utils.register_class(cls)
 
 def unregister():
-    for cls in reversed(classs):
+    for cls in reversed(classes):
         bpy.utils.unregister_class(cls)

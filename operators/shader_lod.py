@@ -168,6 +168,30 @@ class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
                             socket.default_value = new_val
                             modified = True
 
+                # --- C. 处理 Bump 节点 ---
+                elif node.type == 'BUMP':
+                    # 检查是否有高度输入
+                    height_socket = node.inputs.get('Height')
+                    if not height_socket or not height_socket.is_linked:
+                        continue
+
+                    # 检查 Strength 输入
+                    socket = node.inputs.get('Strength')
+                    if socket and not socket.is_linked:
+                        
+                        if "lod_orig_val" not in node:
+                            if socket.default_value <= 0.001:
+                                continue
+                            node["lod_orig_val"] = socket.default_value
+                        
+                        orig_val = node["lod_orig_val"]
+                        # Bump 使用与 Normal Map 相同的法线强度倍率
+                        new_val = orig_val * target_n_mult
+                        
+                        if abs(socket.default_value - new_val) > 0.001:
+                            socket.default_value = new_val
+                            modified = True
+
         if modified:
             self._updated_count += 1
 
@@ -198,9 +222,12 @@ class LOD_OT_ShaderLODReset(bpy.types.Operator):
                     elif node.type == 'DISPLACEMENT':
                         if not node.inputs['Scale'].is_linked:
                             node.inputs['Scale'].default_value = node["lod_orig_val"]
+                    elif node.type == 'BUMP':
+                        if not node.inputs['Strength'].is_linked:
+                            node.inputs['Strength'].default_value = node["lod_orig_val"]
                     
-                    # 移除标记 (可选，或者保留以便下次用)
-                    # del node["lod_orig_val"] 
+                    # 删除缓存，确保下次运行时重新记录原始状态
+                    del node["lod_orig_val"] 
                     count += 1
                     
         self.report({'INFO'}, f"Reset {count} shader nodes to original values.")

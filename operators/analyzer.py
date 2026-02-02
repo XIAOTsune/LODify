@@ -96,14 +96,16 @@ class LOD_OT_CleanColors(bpy.types.Operator):
                 pass
 
         for col in bpy.data.collections:
-            # 1. 还原名字 (去除 " | 10.5%" 这种后缀)
-            if ' | ' in col.name:
-                col.name = col.name.split(' | ')[0].strip()
+            # 1. 先提取基础名称 (去除 " | 10.5%" 这种后缀)
+            base_name = col.name.split(' | ')[0].strip() if ' | ' in col.name else col.name
             
-            # 2. 还原颜色（仅当有备份数据时）
-            if col.name in data:
-                col.color_tag = data[col.name]
-            # 不再强制设为 NONE，保持原样
+            # 2. 还原颜色（使用基础名称查找备份）
+            if base_name in data:
+                col.color_tag = data[base_name]
+            
+            # 3. 还原名字
+            if ' | ' in col.name:
+                col.name = base_name
 
         scn.CA_Toggle = False
         scn.default_col_colors = ""
@@ -131,6 +133,10 @@ class LOD_OT_ViewAnalyzer(bpy.types.Operator):
         
         from mathutils import Color
         for o in mesh_objs:
+            # 备份原始颜色
+            if "_lod_orig_color" not in o:
+                o["_lod_orig_color"] = list(o.color)
+            
             ratio = len(o.data.vertices) / max_v
             # 红色(Hue 0)到蓝色(Hue 0.66)
             c = Color()
@@ -152,9 +158,16 @@ class LOD_OT_CleanViewAnalyzer(bpy.types.Operator):
             target = scn.last_shading if scn.last_shading else 'MATERIAL'
             context.space_data.shading.color_type = target
         
-        # 恢复物体白色
+        # 恢复物体原始颜色
         for o in context.view_layer.objects:
-            o.color = (1,1,1,1)
+            if "_lod_orig_color" in o:
+                try:
+                    o.color = tuple(o["_lod_orig_color"])
+                except:
+                    o.color = (1, 1, 1, 1)
+                del o["_lod_orig_color"]
+            else:
+                o.color = (1, 1, 1, 1)
 
         scn.AA_Toggle = False
         return {'FINISHED'}

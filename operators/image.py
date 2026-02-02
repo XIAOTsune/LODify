@@ -61,7 +61,8 @@ class LOD_OT_UpdateImageList(bpy.types.Operator):
                 "obj": img,
                 "size_str": size_str,
                 "size_float": size_float,
-                "packed_status": 0
+                "packed_status": 0,
+                "dimensions": f"{img.size[0]} x {img.size[1]}" if img.size[0] > 0 else "Unknown"
             }
             
             # 预先判断打包状态
@@ -82,6 +83,7 @@ class LOD_OT_UpdateImageList(bpy.types.Operator):
             item = scn.image_list.add()
             item.lod_image_name = data["obj"].name
             item.image_size = data["size_str"]
+            item.image_dimensions = data["dimensions"]
             item.packed_img = data["packed_status"]
             item.image_selected = False 
             
@@ -953,15 +955,122 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
             
         self.report({'INFO'}, f"Camera Optimization Complete! Processed {self._processed} textures.")
 
+
     def cancel(self, context):
         context.window_manager.event_timer_remove(self._timer)
         context.window_manager.progress_end()
+
+
+class LOD_OT_CleanUnusedMaterialSlots(bpy.types.Operator):
+    """Remove material slots that are not used by any face/spline"""
+    bl_idname = "lod.clean_unused_material_slots"
+    bl_label = "Clean Unused Material Slots"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        total_removed = 0
+        objects_cleaned = 0
+        
+        # 遍历所有物体
+        for obj in bpy.data.objects:
+            removed = self.clean_object_slots(obj)
+            if removed > 0:
+                total_removed += removed
+                objects_cleaned += 1
+        
+        if total_removed > 0:
+            self.report({'INFO'}, f"Cleaned {total_removed} unused slots from {objects_cleaned} objects.")
+        else:
+            self.report({'INFO'}, "No unused material slots found.")
+        
+        return {'FINISHED'}
+    
+    def clean_object_slots(self, obj):
+        """清理单个物体的未使用材质插槽，返回删除的数量"""
+        
+        # 检查物体是否有材质插槽
+        if not obj.material_slots:
+            return 0
+        
+        # 根据物体类型获取已使用的材质索引
+        used_indices = set()
+        
+        if obj.type == 'MESH':
+            # MESH: 检查多边形的 material_index
+            mesh = obj.data
+            if mesh and hasattr(mesh, 'polygons'):
+                for poly in mesh.polygons:
+                    used_indices.add(poly.material_index)
+                    
+        elif obj.type == 'CURVE':
+            # CURVE: 检查每个样条的 material_index
+            curve = obj.data
+            if curve and hasattr(curve, 'splines'):
+                for spline in curve.splines:
+                    used_indices.add(spline.material_index)
+                    
+        elif obj.type == 'SURFACE':
+            # SURFACE: 同样检查样条
+            surface = obj.data
+            if surface and hasattr(surface, 'splines'):
+                for spline in surface.splines:
+                    used_indices.add(spline.material_index)
+                    
+        elif obj.type == 'META':
+            # META: 元球通常只使用一个材质 (索引 0)
+            # 保守处理：只保留索引 0
+            if len(obj.material_slots) > 0:
+                used_indices.add(0)
+                
+        elif obj.type == 'FONT':
+            # FONT: 文本物体通常只使用一个材质
+            # 保守处理：只保留索引 0
+            if len(obj.material_slots) > 0:
+                used_indices.add(0)
+                
+        elif obj.type == 'GPENCIL':
+            # GREASE PENCIL: 检查所有图层和笔画
+            gpd = obj.data
+            if gpd:
+                for layer in gpd.layers:
+                    for frame in layer.frames:
+                        for stroke in frame.strokes:
+                            used_indices.add(stroke.material_index)
+        else:
+            # 其他类型不处理
+            return 0
+        
+        # 如果没有检测到任何使用的索引，且物体有材质插槽
+        # 保守起见，保留第一个插槽
+        if not used_indices and len(obj.material_slots) > 0:
+            used_indices.add(0)
+        
+        # 从后向前删除未使用的插槽 (避免索引变化问题)
+        removed_count = 0
+        slot_count = len(obj.material_slots)
+        
+        for i in range(slot_count - 1, -1, -1):
+            if i not in used_indices:
+                # 设置活动材质索引并删除
+                obj.active_material_index = i
+                
+                # 使用 override 来确保操作在正确的上下文中执行
+                with bpy.context.temp_override(object=obj):
+                    try:
+                        bpy.ops.object.material_slot_remove()
+                        removed_count += 1
+                    except Exception as e:
+                        print(f"[LOD] Failed to remove slot {i} from {obj.name}: {e}")
+        
+        return removed_count
+
 
 classes = (
     LOD_OT_UpdateImageList,
     LOD_OT_SelectAllImages,
     LOD_OT_ResizeImagesAsync,
     LOD_OT_ClearDuplicateImage,
+    LOD_OT_CleanUnusedMaterialSlots,
     LOD_OT_DeleteTextureFolder,
     LOD_OT_SwitchResolution,
     LOD_OT_OptimizeByCamera,

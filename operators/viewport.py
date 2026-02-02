@@ -117,8 +117,8 @@ class LOD_OT_ViewportLODReset(bpy.types.Operator):
                 except:
                     obj.display_type = 'TEXTURED'
                 
-                # [关键改动] 注释掉删除逻辑，确保持久记忆
-                # del obj["_lod_orig_display"] 
+                # 删除缓存，确保下次运行时重新记录原始状态
+                del obj["_lod_orig_display"] 
                 restored_count += 1
             else:
                 # 如果从来没有记录过（即未参与过优化），才使用默认值
@@ -128,8 +128,8 @@ class LOD_OT_ViewportLODReset(bpy.types.Operator):
             
             if "_lod_orig_hide" in obj:
                 obj.hide_viewport = bool(obj["_lod_orig_hide"])
-                # [关键改动] 注释掉删除逻辑
-                # del obj["_lod_orig_hide"]
+                # 删除缓存，确保下次运行时重新记录原始状态
+                del obj["_lod_orig_hide"]
             else:
                 obj.hide_viewport = False
             # ---------------------------------------

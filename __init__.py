@@ -64,7 +64,7 @@ def load_manifest_info():
 bl_info = {
     "name": "LODify",
     "author": "小T_sune",
-    "version": (2, 7, 0),
+    "version": (2, 8, 0),
     "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
     "description": "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt",
