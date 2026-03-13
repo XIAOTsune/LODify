@@ -166,8 +166,6 @@ class LOD_OT_CleanViewAnalyzer(bpy.types.Operator):
                 except:
                     o.color = (1, 1, 1, 1)
                 del o["_lod_orig_color"]
-            else:
-                o.color = (1, 1, 1, 1)
 
         scn.AA_Toggle = False
         return {'FINISHED'}

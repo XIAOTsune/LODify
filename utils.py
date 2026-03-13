@@ -70,9 +70,10 @@ def get_normalized_screen_ratio(scene, obj, camera):
     
     render = scene.render
     # 取屏幕长宽的最大值作为分母
-    max_screen_res = max(render.resolution_x, render.resolution_y)
+    scale = render.resolution_percentage / 100.0
+    max_screen_res = max(render.resolution_x * scale, render.resolution_y * scale)
     
-    if max_screen_res == 0: return 0.0
+    if max_screen_res <= 0: return 0.0
     
     return min(pixels / max_screen_res, 1.0)
 

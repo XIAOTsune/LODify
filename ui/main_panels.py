@@ -134,9 +134,10 @@ class LOD_PT_ImageResizer(LOD_PT_MainPanel, bpy.types.Panel):
             
         # 翻译: 安全模式 (另存副本)
         col.prop(scn, "duplicate_images", text=i18n("Safe Mode (Copy Files)"))
-        if scn.duplicate_images and not scn.use_same_directory:
-             # 翻译: 输出
-             col.prop(scn, "custom_output_path", text=i18n("Output"))
+        if scn.duplicate_images:
+            col.prop(scn, "use_same_directory", text=i18n("Save in Blend Dir"))
+            if not scn.use_same_directory:
+                col.prop(scn, "custom_output_path", text=i18n("Output"))
              
         row = layout.row()
         row.scale_y = 1.4

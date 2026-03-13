@@ -130,8 +130,6 @@ class LOD_OT_ViewportLODReset(bpy.types.Operator):
                 obj.hide_viewport = bool(obj["_lod_orig_hide"])
                 # 删除缓存，确保下次运行时重新记录原始状态
                 del obj["_lod_orig_hide"]
-            else:
-                obj.hide_viewport = False
             # ---------------------------------------
         
         self.report({'INFO'}, f"Reset Viewport: Restored {restored_count} objects.")

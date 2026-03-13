@@ -19,6 +19,27 @@ def check_pil_available():
         return True
     except ImportError:
         return False
+
+def _is_path_in_directory(path, directory):
+    try:
+        norm_path = os.path.normcase(os.path.realpath(path))
+        norm_dir = os.path.normcase(os.path.realpath(directory))
+        return os.path.commonpath([norm_path, norm_dir]) == norm_dir
+    except (ValueError, OSError):
+        return False
+
+def _get_aspect_preserving_size(width, height, target_size):
+    if width <= 0 or height <= 0:
+        return target_size, target_size
+
+    long_edge = max(width, height)
+    if long_edge <= target_size:
+        return width, height
+
+    scale = target_size / float(long_edge)
+    new_width = max(1, int(round(width * scale)))
+    new_height = max(1, int(round(height * scale)))
+    return new_width, new_height
     
 class LOD_OT_UpdateImageList(bpy.types.Operator):
     bl_idname = "lod.updateimagelist"
@@ -148,6 +169,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
                     if ret_code == 0 and "SUCCESS" in stdout_data:
                         # 成功：在主线程刷新图片
                         self.handle_worker_success(task_data)
+                        self._processed += 1
                     else:
                         # 失败：打印错误
                         img_name = task_data["img_name"]
@@ -375,7 +397,8 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
         new_full_path = task["dst_path"]
         
         if img.size[0] > target_size or img.size[1] > target_size:
-            img.scale(target_size, target_size)
+            new_width, new_height = _get_aspect_preserving_size(img.size[0], img.size[1], target_size)
+            img.scale(new_width, new_height)
             
         render = bpy.context.scene.render.image_settings
         old_fmt = render.file_format
@@ -485,7 +508,7 @@ class LOD_OT_DeleteTextureFolder(bpy.types.Operator):
                 
                 # 判断：如果图片的路径以 我们要删除的文件夹路径 开头
                 # 说明这张图在这个文件夹里
-                if img_abs.startswith(target_path_abs):
+                if _is_path_in_directory(img_abs, target_path_abs):
                     # 尝试恢复原图
                     if "lod_original_path" in img:
                         orig_path = img["lod_original_path"]
@@ -919,7 +942,8 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         new_full_path = task["dst_path"]
         
         if img.size[0] > target_size or img.size[1] > target_size:
-            img.scale(target_size, target_size)
+            new_width, new_height = _get_aspect_preserving_size(img.size[0], img.size[1], target_size)
+            img.scale(new_width, new_height)
             
         render = bpy.context.scene.render.image_settings
         old_fmt = render.file_format

@@ -52,7 +52,9 @@ def load_manifest_info():
             with open(manifest_path, "rb") as f:
                 data = tomllib.load(f)
                 # 读取 [information] 下的 website
-                if "information" in data and "website" in data["information"]:
+                if "website" in data:
+                    ADDON_WEBSITE_URL = data["website"]
+                elif "information" in data and "website" in data["information"]:
                     ADDON_WEBSITE_URL = data["information"]["website"]
                 # 也可以顺便读取 maintainer 或 name
         except Exception as e:
@@ -64,7 +66,7 @@ def load_manifest_info():
 bl_info = {
     "name": "LODify",
     "author": "小T_sune",
-    "version": (2, 8, 0),
+    "version": (2, 9, 0),
     "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
     "description": "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt",
