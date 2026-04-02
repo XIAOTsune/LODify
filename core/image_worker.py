@@ -2,9 +2,6 @@ import sys
 import os
 import argparse
 import shutil
-import platform
-
-
 # =============================================================================
 # LODify Internal Component: Image Worker Process
 # =============================================================================
