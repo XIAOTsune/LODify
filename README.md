@@ -1,50 +1,303 @@
-# LODify v2.9.0
+# LODify
 
-LODify is a Blender optimization add-on for large scenes, focused on texture workflows, geometry simplification, and viewport performance management.
+> Blender large-scene optimizer for textures, geometry, viewport display, and scene cleanup.  
+> 面向 Blender 大场景的综合优化插件，覆盖贴图、几何、视口显示与场景清理。
 
-LODify 是一个面向大型 Blender 场景的优化插件，核心覆盖贴图优化、几何减面、视口性能管理，以及批量化场景分析工具。
+<p align="center">
+  <a href="https://github.com/XIAOTsune/LODify/releases">Releases</a> ·
+  <a href="https://github.com/XIAOTsune/LODify">GitHub</a>
+</p>
 
-## Highlights / 功能亮点
+---
 
-- Collection Analyzer: analyze collection density, apply heatmap coloring, or use non-destructive percentage labels only. / 集合分析器：可分析 Collection 密度、使用热力图着色，或仅以非破坏方式追加百分比标记。
-- 3D View Analyzer: quickly identify heavy objects in the viewport and clean up safely. / 3D 视图分析器：快速定位高负载物体，并可安全清理分析结果。
-- Async Image Optimization: resize textures in the background through a worker process. / 异步图片优化：通过独立 worker 在后台批量缩放贴图。
-- Camera-Based Optimization: estimate on-screen texture demand from the active camera and generate more reasonable output resolutions. / 相机视角优化：基于当前相机估算贴图实际屏幕占比，自动生成更合理的输出分辨率。
-- Geometry LOD: support both Decimate and Geometry Nodes based workflows for batch LOD generation. / 几何 LOD：同时支持 Decimate 和 Geometry Nodes 两种批量 LOD 工作流。
-- Viewport / Shader LOD: reduce display cost for distant objects and restore original state safely. / 视口 / Shader LOD：降低远处物体的显示与材质开销，并可安全恢复原始状态。
+## EN | What Is LODify?
 
-## What's New in 2.9.0 / 2.9.0 更新内容
+LODify is a practical optimization toolkit for Blender scenes that are getting too heavy to edit smoothly.
 
-- Fixed inaccurate progress counting during async image processing. / 修复异步图片处理时进度统计不准确的问题。
-- Fixed View Analyzer cleanup so untouched object colors are no longer overwritten. / 修复清理 View Analyzer 时误覆盖未分析对象颜色的问题。
-- Fixed Viewport Reset so objects without hide-state snapshots are not incorrectly unhidden. / 修复 Viewport Reset 在没有隐藏状态快照时错误取消隐藏对象的问题。
-- Fixed native fallback image resizing to preserve aspect ratio. / 修复原生兜底缩放会拉伸图片的问题，现已保持宽高比。
-- Added the missing output-directory mode UI control for image processing. / 补回图片处理输出目录模式的 UI 控件。
-- Updated screen-ratio normalization to respect `resolution_percentage`. / 更新屏幕占比归一化逻辑，使其正确考虑 `resolution_percentage`。
-- Hardened generated-folder deletion checks to use proper directory containment validation. / 强化生成目录删除校验，改为可靠的目录包含关系判断。
-- Improved manifest website lookup compatibility for Blender extension metadata. / 改进 Blender Extension manifest 网站字段的兼容读取逻辑。
+Instead of focusing on only one bottleneck, it gives you a full workflow:
 
-## Platform Support / 平台支持
+- find heavy collections and objects fast
+- batch resize textures safely
+- generate geometry LOD by screen importance
+- reduce viewport cost for distant objects
+- simplify shader detail at distance
+- clean duplicated image data and unused material slots
 
-- Blender Extensions platform: `windows-x64`
-- Bundled Pillow wheels are currently maintained for Windows only. / 当前仅维护 Windows 对应的 Pillow wheel。
-- Current package targets Blender `4.2+` with bundled Windows wheels for Python `3.11` and `3.13`. / 当前扩展包面向 Blender `4.2+`，内置适配 Python `3.11` 与 `3.13` 的 Windows wheels。
-- Blender `5.1.0` is supported on the Windows package. / Windows 版现已支持 Blender `5.1.0`。
+It is designed for artists and technical users who want faster iteration without manually rebuilding an optimization pipeline from scratch.
 
-## Requirements / 环境要求
+## 中文 | LODify 是什么？
+
+LODify 是一个面向 Blender 大场景的实用优化工具集，适合处理“场景太重、编辑卡顿、视口吃力、贴图太大”的工作场景。
+
+它不是只解决单一问题，而是把常见优化流程整合到一个插件里：
+
+- 快速找出高负载 Collection 和高负载物体
+- 安全地批量缩放贴图
+- 按屏幕占比生成几何 LOD
+- 按距离降低视口显示开销
+- 远距离降低材质细节强度
+- 清理重复图片数据和未使用材质槽
+
+目标很直接：让你更快定位瓶颈，更快优化，更少手工重复劳动。
+
+---
+
+## EN | Why It Stands Out
+
+- One add-on, multiple optimization layers  
+  Texture, geometry, viewport, shader, and cleanup tools live in one workflow.
+
+- Built for real production friction  
+  The tools target the things that usually slow Blender down first: oversized textures, dense meshes, distant objects, and messy scene data.
+
+- Async where it matters  
+  Expensive image operations and several batch updates are processed in a non-blocking way to keep the UI responsive.
+
+- Safer than brute-force optimization  
+  LODify stores original states where needed and offers reset flows for viewport, shader, and geometry operations.
+
+- Camera-aware decisions  
+  Instead of optimizing blindly, several features estimate on-screen importance and adjust output accordingly.
+
+## 中文 | 它的优势是什么？
+
+- 一个插件覆盖多层优化  
+  贴图、几何、视口、材质、清理工具集中在同一套工作流里。
+
+- 面向真实的大场景痛点  
+  它优先解决最常见的性能瓶颈：大贴图、高面数、远景物体、混乱的数据引用。
+
+- 关键流程采用异步处理  
+  图片处理和部分批量更新不会粗暴卡死 Blender 界面，交互体验更稳定。
+
+- 比“硬砍性能”更安全  
+  多个模块都保留原始状态或提供重置入口，适合边看效果边调整。
+
+- 带有相机感知能力  
+  部分优化不是盲目统一降级，而是基于物体在屏幕中的实际重要性做判断。
+
+---
+
+## EN | Core Features
+
+### 1. Collection Analyzer
+
+- analyzes vertex weight across collections
+- can append percentage labels to collection names
+- can also use heatmap colors for a quick visual scan
+
+Useful for understanding which part of a scene is actually heavy before changing anything.
+
+### 2. 3D View Analyzer
+
+- colors mesh objects by relative density in the current view layer
+- makes heavy objects obvious at a glance
+- restores original object colors safely
+
+### 3. Async Texture Resizer
+
+- scans scene images and shows estimated memory usage
+- batch resizes selected textures
+- supports safe copy mode instead of overwriting originals
+- can write resized files to the blend directory or a custom output path
+- supports switching between original and generated texture sets
+
+### 4. Camera Optimization
+
+- estimates on-screen texture demand from the active camera
+- generates a camera-optimized texture set automatically
+- avoids wasting resolution on objects that barely occupy pixels
+
+### 5. Geometry LOD
+
+- supports two workflows:
+  - Decimate Modifier
+  - Geometry Nodes based LOD
+- updates LOD by screen ratio instead of only raw distance
+- includes safety floors such as minimum face count and minimum retained ratio
+- can batch setup, update, reset, or destructively apply results
+
+### 6. Viewport LOD
+
+- changes object display mode by distance
+- supports textured, solid, wire, and bounds display
+- can optionally hide very distant objects
+- restores original display and hidden state safely
+
+### 7. Shader Detail LOD
+
+- reduces Normal Map, Bump, and Displacement intensity by distance
+- keeps close-up detail where it matters
+- lowers shading cost on distant assets
+
+### 8. Cleanup and Storage Tools
+
+- merges duplicate image references such as `.001`
+- removes unused material slots
+- manages generated `textures_*` folders from inside Blender
+
+## 中文 | 核心功能
+
+### 1. Collection Analyzer
+
+- 统计各 Collection 的顶点负载占比
+- 可把占比直接写到 Collection 名称后缀
+- 也可使用热力色标快速查看密度分布
+
+适合在正式优化前先定位“到底哪一组最重”。
+
+### 2. 3D View Analyzer
+
+- 按相对顶点密度给物体着色
+- 一眼看出当前视图里谁最重
+- 可安全恢复原始颜色
+
+### 3. 异步贴图缩放
+
+- 扫描场景贴图并显示估算内存占用
+- 批量缩放选中的图片
+- 支持安全模式，生成副本而不是覆盖原图
+- 可输出到 `.blend` 目录或自定义目录
+- 可在原图与生成后的多个贴图集之间切换
+
+### 4. 相机视角优化
+
+- 基于当前相机估算贴图在屏幕上的实际需求
+- 自动生成相机专用优化贴图集
+- 避免把分辨率浪费在几乎看不见的物体上
+
+### 5. 几何 LOD
+
+- 支持两种工作流：
+  - Decimate Modifier
+  - 基于 Geometry Nodes 的 LOD
+- 根据屏幕占比而不是纯距离更新几何细节
+- 提供最小面数保护、最小保留比例等安全阈值
+- 支持批量 setup、update、reset 和最终应用
+
+### 6. 视口 LOD
+
+- 按距离自动切换物体显示模式
+- 支持 `Textured`、`Solid`、`Wire`、`Bounds`
+- 可选择隐藏极远物体
+- 可安全恢复原始显示与隐藏状态
+
+### 7. 材质细节 LOD
+
+- 按距离降低 `Normal`、`Bump`、`Displacement` 强度
+- 近景保留细节，远景降低开销
+- 适合大型环境场景和重复资产
+
+### 8. 清理与存储管理
+
+- 合并 `.001` 这类重复图片引用
+- 清理未使用的材质槽
+- 在 Blender 内直接管理生成的 `textures_*` 文件夹
+
+---
+
+## EN | How It Works
+
+LODify uses a mix of scene analysis, distance-based rules, and screen-space estimation:
+
+- Collection and object analyzers measure scene density and expose hotspots visually.
+- Texture tools scan image data, estimate memory cost, and batch-generate resized copies.
+- Camera optimization calculates approximate screen coverage from object bounds and camera projection.
+- Geometry LOD converts screen importance into reduction strength, using either Decimate or a generated Geometry Nodes group.
+- Viewport and shader LOD downgrade only when objects move farther away, while keeping reset paths available.
+- Heavy image processing is delegated to a subprocess worker so Blender stays more responsive during batch tasks.
+
+## 中文 | 它是怎么实现的？
+
+LODify 的实现思路是把“分析”和“执行优化”分开：
+
+- 先通过 Collection / 物体分析找出高负载区域。
+- 再通过贴图扫描、屏幕占比估算、距离分级等方式决定优化强度。
+- 相机优化会根据包围盒投影到屏幕后的占比，估算贴图真正需要的像素级别。
+- 几何 LOD 会把屏幕重要性映射成减面强度，可走 `Decimate`，也可走自动构建的 `Geometry Nodes`。
+- 视口 LOD 和 Shader LOD 则按距离逐级降级，尽量把性能节省在远景对象上。
+- 大批量贴图处理交给独立 worker 子进程执行，以减少 Blender 主线程卡顿。
+
+---
+
+## EN | Typical Workflow
+
+1. Run the analyzers to find the real hotspots.
+2. Resize textures or generate a camera-optimized texture set.
+3. Configure Geometry LOD and update it from the chosen camera.
+4. Enable Viewport LOD for smoother scene navigation.
+5. Optionally reduce shader detail on distant assets.
+6. Clean duplicate images and unused material slots.
+
+## 中文 | 推荐使用流程
+
+1. 先运行分析器，确认真正的性能热点。
+2. 批量缩放贴图，或生成相机专用优化贴图集。
+3. 设置 Geometry LOD，并基于相机更新几何细节。
+4. 开启 Viewport LOD，提升场景浏览流畅度。
+5. 需要时再开启 Shader LOD，进一步压低远景材质成本。
+6. 最后清理重复图片和未使用材质槽。
+
+---
+
+## EN | Installation
+
+1. Download the latest package from [Releases](https://github.com/XIAOTsune/LODify/releases).
+2. Open Blender.
+3. Go to `Edit -> Preferences -> Get Extensions`.
+4. Choose `Install from Disk...` and select the downloaded zip.
+5. Open the `Optimize` tab in the 3D View sidebar.
+
+## 中文 | 安装方式
+
+1. 从 [Releases](https://github.com/XIAOTsune/LODify/releases) 下载最新版本。
+2. 打开 Blender。
+3. 进入 `Edit -> Preferences -> Get Extensions`。
+4. 使用 `Install from Disk...` 选择下载好的 zip 包。
+5. 安装后，在 3D View 侧边栏打开 `Optimize` 标签页。
+
+---
+
+## EN | Requirements
 
 - Blender `4.2+`
 - Windows `x64`
 
-## Installation / 安装方式
+Current extension packaging includes bundled Pillow wheels for Windows.
 
-1. Download the latest release package from the [Releases](https://github.com/XIAOTsune/LODify/releases) page. / 从 [Releases](https://github.com/XIAOTsune/LODify/releases) 页面下载最新发布包。
-2. Open Blender and go to `Edit -> Preferences -> Get Extensions`. / 打开 Blender，进入 `Edit -> Preferences -> Get Extensions`。
-3. Use `Install from Disk...` and select the downloaded zip package. / 使用 `Install from Disk...` 并选择下载好的 zip 包。
-4. Open the `Optimize` tab in the 3D View sidebar. / 安装后在 3D 视图侧边栏中打开 `Optimize` 标签页。
+## 中文 | 环境要求
 
-## Repository Notes / 仓库说明
+- Blender `4.2+`
+- Windows `x64`
 
-- `blender_manifest.toml` is the Blender Extensions manifest. / `blender_manifest.toml` 是 Blender Extensions 的清单文件。
-- `core/image_worker.py` is the subprocess worker used by async texture operations. / `core/image_worker.py` 是异步贴图处理使用的子进程 worker。
-- The `wheels/` directory is part of the extension package and currently only ships the Windows wheel. / `wheels/` 目录属于扩展发布内容，当前仅附带 Windows wheel。
+当前发布包内置的 Pillow wheel 主要面向 Windows。
+
+---
+
+## EN | Repository Structure
+
+- `blender_manifest.toml`: Blender Extensions manifest
+- `core/image_worker.py`: subprocess worker for async image tasks
+- `operators/`: feature operators for analyzers, image tools, geometry, viewport, and shader LOD
+- `ui/`: Blender panels and list UI
+- `wheels/`: bundled Pillow wheels for supported Windows Python versions
+
+## 中文 | 仓库结构
+
+- `blender_manifest.toml`：Blender Extensions 清单文件
+- `core/image_worker.py`：异步图片处理使用的子进程 worker
+- `operators/`：分析、贴图、几何、视口、材质 LOD 等功能实现
+- `ui/`：Blender 面板与列表界面
+- `wheels/`：发布包附带的 Windows Pillow 依赖
+
+---
+
+## EN | Credits
+
+Core analysis ideas and parts of the UI layout were inspired by Rodrigo Gama's "ToOptimize Tools".  
+LODify extends that direction with a refactored structure and added workflows such as Geometry Nodes integration, async image processing, and camera-based optimization.
+
+## 中文 | 致谢
+
+核心分析思路与部分界面布局参考了 Rodrigo Gama 的 "ToOptimize Tools"。  
+LODify 在此基础上进行了结构重构，并扩展了 `Geometry Nodes` 集成、异步图片处理、相机视角优化等工作流。
