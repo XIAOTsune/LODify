@@ -19,7 +19,8 @@ blender_version_min = "4.2.0"
 platforms = ["windows-x64"]
 
 wheels = [
-    "./wheels/pillow-12.1.0-cp311-cp311-win_amd64.whl"
+    "./wheels/pillow-12.1.1-cp311-cp311-win_amd64.whl",
+    "./wheels/pillow-12.1.1-cp313-cp313-win_amd64.whl"
 ]
 
 [permissions]

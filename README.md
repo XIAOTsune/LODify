@@ -28,7 +28,8 @@ LODify 是一个面向大型 Blender 场景的优化插件，核心覆盖贴图�
 
 - Blender Extensions platform: `windows-x64`
 - Bundled Pillow wheels are currently maintained for Windows only. / 当前仅维护 Windows 对应的 Pillow wheel。
-- Current package targets Blender `4.2+` with Python `3.11` wheels. / 当前扩展包面向 Blender `4.2+`，使用 Python `3.11` 对应 wheels。
+- Current package targets Blender `4.2+` with bundled Windows wheels for Python `3.11` and `3.13`. / 当前扩展包面向 Blender `4.2+`，内置适配 Python `3.11` 与 `3.13` 的 Windows wheels。
+- Blender `5.1.0` is supported on the Windows package. / Windows 版现已支持 Blender `5.1.0`。
 
 ## Requirements / 环境要求
 

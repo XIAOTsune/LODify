@@ -5,50 +5,42 @@ Release Date: `2026-03-13`
 
 ## English
 
-LODify 2.9.0 is a maintenance and stabilization release focused on improving reliability, cleanup safety, and workflow consistency in large-scene optimization.
-
-This update does not introduce a major new feature set. Instead, it refines several existing systems to make everyday use more predictable and production-friendly, especially in image-processing and viewport-optimization workflows.
+LODify 2.9.0 is a stability-focused update for large-scene optimization workflows in Blender.
 
 ### Highlights
 
-- Improved async image-processing progress reporting so long-running texture batches now reflect completion more accurately.
-- Fixed native fallback image resizing to preserve aspect ratio and avoid unintended stretching.
-- Refined View Analyzer cleanup behavior so only objects with stored color snapshots are restored, preventing accidental color overrides on untouched objects.
-- Corrected Viewport Reset behavior so objects without saved hide-state snapshots are no longer unintentionally unhidden.
-- Restored the missing output-directory workflow control in the image-resize UI, making save-location behavior clearer and easier to manage.
-- Updated camera-based texture optimization calculations to respect Blender's `resolution_percentage`, improving screen-coverage estimation.
-- Strengthened generated-folder deletion checks with safer directory containment validation.
-- Improved extension manifest website lookup compatibility for release metadata handling.
+- Improved async image-processing progress reporting.
+- Fixed native fallback resizing to preserve aspect ratio.
+- Fixed View Analyzer cleanup so untouched objects are no longer overwritten.
+- Fixed Viewport Reset so objects without saved hide snapshots are no longer unintentionally unhidden.
+- Restored the missing output-directory control in the image resize workflow.
+- Improved camera-based texture optimization by respecting `resolution_percentage`.
+- Hardened generated-folder deletion checks.
 
-### Release Positioning
+### Compatibility
 
-LODify 2.9.0 is recommended as a stability-focused update for users working with heavy Blender scenes, large texture sets, and repeated optimization passes. The release is intended to reduce workflow friction and improve confidence in cleanup and reset operations.
+- Supported platform: Windows `x64`
+- Supported Blender versions: Blender `4.2+`
+- Added support for Blender `5.1.0`
+- Bundled Pillow wheels now cover Python `3.11` and `3.13`
 
 ## 中文
 
-LODify 2.9.0 是一次以维护和稳定性为核心的正式更新，重点提升大型场景优化流程中的可靠性、清理安全性，以及整体工作流一致性。
-
-这一版本并未引入大规模的新功能模块，而是针对现有系统进行了多项打磨与修正，使插件在日常使用中更加稳定、可控，也更适合持续投入到实际生产环境中，尤其是贴图处理与视口优化相关流程。
+LODify 2.9.0 是一次以稳定性为核心的更新，主要面向 Blender 大场景优化工作流。
 
 ### 更新亮点
 
-- 优化了异步图片处理的进度反馈逻辑，使长时间运行的贴图批处理在完成统计上更加准确。
-- 修复了原生兜底图片缩放会破坏宽高比的问题，避免输出结果出现拉伸。
-- 调整了 View Analyzer 的清理逻辑，现在只会恢复确实保存过颜色快照的对象，避免误改未参与分析对象的颜色。
-- 修复了 Viewport Reset 对无隐藏状态快照对象的误恢复问题，不再错误取消隐藏无关对象。
-- 补回了图片缩放界面中缺失的输出目录控制项，使输出位置选择更加清晰直观。
-- 更新了基于相机的贴图优化计算逻辑，现已正确考虑 Blender 的 `resolution_percentage` 参数，提升屏幕占比估算准确度。
-- 强化了生成目录删除时的路径校验逻辑，进一步提升清理操作的安全性。
-- 改进了扩展清单中 `website` 字段的读取兼容性，提升发布元数据处理的稳定性。
+- 优化了异步图片处理的进度反馈。
+- 修复了原生兜底缩放破坏宽高比的问题。
+- 修复了 View Analyzer 清理时误覆盖未处理对象颜色的问题。
+- 修复了 Viewport Reset 误取消隐藏无快照对象的问题。
+- 补回了图片缩放流程中缺失的输出目录控制项。
+- 改进了基于相机的贴图优化计算，现已正确考虑 `resolution_percentage`。
+- 强化了生成目录删除时的安全校验。
 
-### 版本说明
+### 兼容性
 
-LODify 2.9.0 推荐给处理高负载 Blender 场景、大量贴图资源以及频繁执行优化回合的用户使用。该版本的目标，是在不改变原有核心工作流的前提下，减少使用阻力，提升清理与重置操作的可信度，并让整体优化体验更加稳定。
-
-## Notes / 备注
-
-English:
-This release note is based on the actual code changes between Git tags `v2.8.0` and `v2.9.0`.
-
-中文：
-本发版说明基于 Git 标签 `v2.8.0` 到 `v2.9.0` 之间的实际代码变更整理。
+- 支持平台：Windows `x64`
+- 支持 Blender 版本：Blender `4.2+`
+- 新增 Blender `5.1.0` 支持
+- 内置 Pillow wheels 现已覆盖 Python `3.11` 与 `3.13`

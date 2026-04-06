@@ -4,6 +4,44 @@ import math
 from mathutils import Vector
 from .. import utils
 
+
+def _iter_group_interface_items(node_group):
+    interface = getattr(node_group, "interface", None)
+    if not interface:
+        return []
+
+    items_tree = getattr(interface, "items_tree", None)
+    if items_tree is not None:
+        return list(items_tree)
+
+    items = getattr(interface, "items", None)
+    if items is not None:
+        return list(items)
+
+    return []
+
+
+def _interface_input_count(node_group):
+    return sum(
+        1
+        for item in _iter_group_interface_items(node_group)
+        if getattr(item, "item_type", None) == 'SOCKET' and getattr(item, "in_out", None) == 'INPUT'
+    )
+
+
+def _prepare_object_for_modifier_apply(context, obj):
+    try:
+        bpy.ops.object.select_all(action='DESELECT')
+    except Exception:
+        pass
+
+    try:
+        obj.select_set(True)
+    except Exception:
+        pass
+
+    context.view_layer.objects.active = obj
+
 # =============================================================================
 # 常量定义
 # =============================================================================
@@ -171,7 +209,7 @@ def get_input_identifier(node_group, input_name):
     """(辅助函数保持不变)"""
     if not node_group: return None
     if hasattr(node_group, "interface"):
-        for item in node_group.interface.items_tree:
+        for item in _iter_group_interface_items(node_group):
             if item.item_type == 'SOCKET' and item.in_out == 'INPUT':
                 if item.name == input_name:
                     return item.identifier
@@ -311,7 +349,7 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
                 force_rebuild = True
             # 检查接口数量
             if mod and mod.node_group and self.lod_group and \
-               len(mod.node_group.interface.items_tree) != len(self.lod_group.interface.items_tree):
+               _interface_input_count(mod.node_group) != _interface_input_count(self.lod_group):
                 force_rebuild = True
 
             if not mod or force_rebuild:
@@ -597,7 +635,7 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
         # 所以我们需要在后台悄悄切换激活物体
         
         # 1. 强制设为激活物体
-        context.view_layer.objects.active = obj
+        _prepare_object_for_modifier_apply(context, obj)
         
         # 2. 应用修改器
         # 注意：使用 modifier_apply 可能会比较慢，但在异步循环中是可以接受的

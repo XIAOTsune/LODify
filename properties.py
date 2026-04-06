@@ -6,6 +6,37 @@ from bpy.props import (
     EnumProperty, CollectionProperty, PointerProperty
 )
 from .i18n import i18n
+
+
+def get_display_type_items():
+    enum_items = bpy.types.Object.bl_rna.properties["display_type"].enum_items
+    available = {item.identifier for item in enum_items}
+    labels = {
+        'TEXTURED': ("Textured", "Full Material"),
+        'SOLID': ("Solid", "Solid Shading"),
+        'WIRE': ("Wire", "Wireframe"),
+        'BOUNDS': ("Bounds", "Bounding Box (Fastest)"),
+    }
+    ordered = ['TEXTURED', 'SOLID', 'WIRE', 'BOUNDS']
+    items = []
+
+    for identifier in ordered:
+        if identifier in available:
+            label, description = labels[identifier]
+            items.append((identifier, label, description))
+
+    if not items:
+        for item in enum_items:
+            items.append((item.identifier, item.name, item.description))
+
+    return items
+
+
+DISPLAY_TYPE_ITEMS = get_display_type_items()
+DEFAULT_NEAR_DISPLAY = 'TEXTURED' if any(item[0] == 'TEXTURED' for item in DISPLAY_TYPE_ITEMS) else DISPLAY_TYPE_ITEMS[0][0]
+DEFAULT_MID_DISPLAY = 'SOLID' if any(item[0] == 'SOLID' for item in DISPLAY_TYPE_ITEMS) else DISPLAY_TYPE_ITEMS[0][0]
+DEFAULT_LOW_DISPLAY = 'WIRE' if any(item[0] == 'WIRE' for item in DISPLAY_TYPE_ITEMS) else DISPLAY_TYPE_ITEMS[-1][0]
+DEFAULT_FAR_DISPLAY = 'BOUNDS' if any(item[0] == 'BOUNDS' for item in DISPLAY_TYPE_ITEMS) else DISPLAY_TYPE_ITEMS[-1][0]
 # --- Collection Items ---
 class LOD_ImageItem(bpy.types.PropertyGroup):
     lod_image_name: StringProperty()
@@ -90,17 +121,10 @@ class LOD_Props(bpy.types.PropertyGroup):
         default=False,
     )
     
-    display_items = (
-        ('TEXTURED', "Textured", "Full Material"),
-        ('SOLID',    "Solid",    "Solid Shading"),
-        ('WIRE',     "Wire",     "Wireframe"),
-        ('BOUNDS',   "Bounds",   "Bounding Box (Fastest)"),
-    )
-
-    view_lod0_display: EnumProperty(name="L0 Display", items=display_items, default='TEXTURED')
-    view_lod1_display: EnumProperty(name="L1 Display", items=display_items, default='SOLID')
-    view_lod2_display: EnumProperty(name="L2 Display", items=display_items, default='WIRE')
-    view_lod3_display: EnumProperty(name="L3 Display", items=display_items, default='BOUNDS')
+    view_lod0_display: EnumProperty(name="L0 Display", items=DISPLAY_TYPE_ITEMS, default=DEFAULT_NEAR_DISPLAY)
+    view_lod1_display: EnumProperty(name="L1 Display", items=DISPLAY_TYPE_ITEMS, default=DEFAULT_MID_DISPLAY)
+    view_lod2_display: EnumProperty(name="L2 Display", items=DISPLAY_TYPE_ITEMS, default=DEFAULT_LOW_DISPLAY)
+    view_lod3_display: EnumProperty(name="L3 Display", items=DISPLAY_TYPE_ITEMS, default=DEFAULT_FAR_DISPLAY)
     view_lod3_hide: BoolProperty(name="Hide at L3", description="Hide objects completely at far distance", default=False)
 
     # ==========================================================
