@@ -1,0 +1,30 @@
+schema_version = "1.0.0"
+
+
+id = "lodify_optimizer"
+version = "2.9.0"
+name = "LODify"
+tagline = "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt"
+maintainer = "XIAOTsune"
+type = "add-on"
+website = "https://github.com/XIAOTsune/LODify"
+
+
+# Blender 插件通常使用 GPL-2.0-or-later 协议
+license = ["SPDX:GPL-3.0-or-later"]
+
+tags = ["Object"]
+blender_version_min = "4.2.0"
+
+platforms = ["windows-x64"]
+
+wheels = [
+    "./wheels/pillow-12.1.1-cp311-cp311-win_amd64.whl",
+    "./wheels/pillow-12.1.1-cp313-cp313-win_amd64.whl"
+]
+
+[permissions]
+files = "Required to read and write texture files for resizing"
+
+[build]
+paths = ["."]
