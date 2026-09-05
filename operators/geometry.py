@@ -3,7 +3,18 @@ import time
 import math
 from mathutils import Vector
 from .. import utils
-from ..core.profile import GENERATED_PROFILE_KEY, ensure_active_profile, get_profile_camera, get_profile_objects
+from ..core.profile import (
+    GENERATED_PROFILE_KEY,
+    assign_new_uuid,
+    clear_modifier_owner,
+    ensure_active_profile,
+    get_modifier_owner,
+    get_geometry_node_input,
+    get_profile_camera,
+    get_profile_objects,
+    set_geometry_node_input,
+    set_modifier_owner,
+)
 
 
 def _iter_group_interface_items(node_group):
@@ -331,8 +342,8 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
 
         def owned(modifier):
             return modifier and (
-                modifier.get(GENERATED_PROFILE_KEY) == self.profile_id
-                or (modifier.get(GENERATED_PROFILE_KEY) is None and obj.get("_lod_geo_lod_created"))
+                get_modifier_owner(obj, modifier) == self.profile_id
+                or (get_modifier_owner(obj, modifier) is None and obj.get("_lod_geo_lod_created"))
             )
         
         if self.method == 'DECIMATE':
@@ -349,7 +360,7 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
                 mod = obj.modifiers.new(DECIMATE_MOD_NAME, 'DECIMATE')
                 mod.decimate_type = 'COLLAPSE'
                 mod.ratio = 1.0 # 初始设为 1.0，防止刚加上去模型就消失
-                mod[GENERATED_PROFILE_KEY] = self.profile_id
+                set_modifier_owner(obj, mod, self.profile_id)
                 obj["_lod_geo_lod_created"] = True
                 self._created_count += 1
                 
@@ -377,13 +388,13 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
                 if mod: obj.modifiers.remove(mod)
                 mod = obj.modifiers.new(name=GEO_NODES_MOD_NAME, type='NODES')
                 mod.node_group = self.lod_group
-                mod[GENERATED_PROFILE_KEY] = self.profile_id
+                set_modifier_owner(obj, mod, self.profile_id)
                 obj["_lod_geo_lod_created"] = True
                 self._created_count += 1
             
             # 初始化参数
             if self.gn_id_dist:
-                mod[self.gn_id_dist] = self.max_dist 
+                set_geometry_node_input(mod, self.gn_id_dist, self.max_dist)
 
     def finish(self, context):
         context.window_manager.event_timer_remove(self._timer)
@@ -459,8 +470,8 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
 
                 modifier = obj.modifiers.get(target_mod)
                 if modifier and (
-                    modifier.get(GENERATED_PROFILE_KEY) == self.profile_id
-                    or obj.get("_lod_geo_lod_created")
+                    get_modifier_owner(obj, modifier) == self.profile_id
+                    or (get_modifier_owner(obj, modifier) is None and obj.get("_lod_geo_lod_created"))
                 ):
                     self._queue.append(obj)
         
@@ -531,19 +542,17 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
                 # A. 更新 LOD_Factor (核心)
                 if self.gn_id_factor:
                     try:
-                        curr = mod.get(self.gn_id_factor, 1.0)
+                        curr = get_geometry_node_input(mod, self.gn_id_factor, 1.0)
                         if abs(curr - target_factor) > EPSILON:
-                            mod[self.gn_id_factor] = target_factor
-                            changed = True
+                            changed = set_geometry_node_input(mod, self.gn_id_factor, target_factor) or changed
                     except: pass
                 
                 # B. 同步 Max_Dist (允许用户在播放时实时调整最大塌陷程度)
                 if self.gn_id_dist:
                     try:
-                        curr_dist = mod.get(self.gn_id_dist, 0.5)
+                        curr_dist = get_geometry_node_input(mod, self.gn_id_dist, 0.5)
                         if abs(curr_dist - self.max_dist) > 0.0001:
-                            mod[self.gn_id_dist] = self.max_dist
-                            changed = True
+                            changed = set_geometry_node_input(mod, self.gn_id_dist, self.max_dist) or changed
                     except: pass
                 
                 if changed:
@@ -580,11 +589,12 @@ class LOD_OT_GeoLODReset(bpy.types.Operator):
                 modifier = obj.modifiers.get(modifier_name)
                 if not modifier:
                     continue
-                owner = modifier.get(GENERATED_PROFILE_KEY)
+                owner = get_modifier_owner(obj, modifier)
                 legacy_owned = bool(obj.get("_lod_geo_lod_created"))
                 if owner != profile.profile_id and not (owner is None and legacy_owned):
                     continue
                 obj.modifiers.remove(modifier)
+                clear_modifier_owner(obj, modifier.name)
                 removed += 1
             if "_lod_geo_lod_created" in obj: del obj["_lod_geo_lod_created"]
         self.report({'INFO'}, f"Reset {removed} objects.")
@@ -667,8 +677,8 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
 
             mod = obj.modifiers.get(self._target_mod_name)
             if mod and (
-                mod.get(GENERATED_PROFILE_KEY) == self.profile_id
-                or (mod.get(GENERATED_PROFILE_KEY) is None and obj.get("_lod_geo_lod_created"))
+                get_modifier_owner(obj, mod) == self.profile_id
+                or (get_modifier_owner(obj, mod) is None and obj.get("_lod_geo_lod_created"))
             ):
                 self._queue.append(obj)
 
@@ -693,6 +703,7 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
 
         if obj.type == 'MESH' and obj.data and obj.data.get(GENERATED_PROFILE_KEY) != self.profile_id:
             mesh_copy = obj.data.copy()
+            assign_new_uuid(mesh_copy)
             mesh_copy.name = f"LODify_{self.profile_id[:8]}_{obj.name}_Mesh"
             mesh_copy[GENERATED_PROFILE_KEY] = self.profile_id
             obj.data = mesh_copy
@@ -713,6 +724,7 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
                 # 3. 清理自定义属性标记
                 if "_lod_geo_lod_created" in obj:
                     del obj["_lod_geo_lod_created"]
+                clear_modifier_owner(obj, self._target_mod_name)
                     
                 self._applied_count += 1
             except Exception as e:

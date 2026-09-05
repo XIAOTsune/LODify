@@ -1,7 +1,15 @@
 import bpy
 import time
 from mathutils import Vector
-from ..core.profile import GENERATED_PROFILE_KEY, ensure_active_profile, get_active_profile, get_profile_camera, get_profile_objects, restore_material_assignments
+from ..core.profile import (
+    GENERATED_PROFILE_KEY,
+    assign_new_uuid,
+    ensure_active_profile,
+    get_active_profile,
+    get_profile_camera,
+    get_profile_objects,
+    restore_material_assignments,
+)
 
 class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
     """Update shader details (Normal/Displacement) asynchronously"""
@@ -123,6 +131,7 @@ class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
             # Create one profile-owned variant per object slot and leave the source intact.
             if mat.get(GENERATED_PROFILE_KEY) != self.profile_id:
                 variant = mat.copy()
+                assign_new_uuid(variant)
                 variant.name = f"LODify_{self.profile_id[:8]}_{obj.name}_{slot_index}"
                 variant[GENERATED_PROFILE_KEY] = self.profile_id
                 variant["_lodify_source_material"] = mat.name

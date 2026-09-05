@@ -6,7 +6,14 @@ import gc
 import subprocess # 替代 threading
 import sys        # 用于获取 python 解释器路径
 from .. import utils
-from ..core.profile import GENERATED_PROFILE_KEY, ensure_active_profile, get_active_profile, get_profile_camera, get_profile_objects
+from ..core.profile import (
+    GENERATED_PROFILE_KEY,
+    assign_new_uuid,
+    ensure_active_profile,
+    get_active_profile,
+    get_profile_camera,
+    get_profile_objects,
+)
 
 # 延迟导入pil
 def check_pil_available():
@@ -513,6 +520,7 @@ class LOD_OT_ClearDuplicateImage(bpy.types.Operator):
                     continue
                 if material.get(GENERATED_PROFILE_KEY) != profile.profile_id:
                     variant = material.copy()
+                    assign_new_uuid(variant)
                     variant.name = f"LODify_{profile.profile_id[:8]}_{obj.name}_{slot_index}"
                     variant[GENERATED_PROFILE_KEY] = profile.profile_id
                     slot.material = variant
@@ -1069,6 +1077,7 @@ class LOD_OT_CleanUnusedMaterialSlots(bpy.types.Operator):
                 # The profile snapshot stores the source mesh; edit a private copy.
                 try:
                     mesh_copy = obj.data.copy()
+                    assign_new_uuid(mesh_copy)
                     mesh_copy.name = f"LODify_Cleanup_{obj.name}"
                     mesh_copy[GENERATED_PROFILE_KEY] = profile.profile_id
                     obj.data = mesh_copy

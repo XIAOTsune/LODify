@@ -9,6 +9,114 @@ from bpy.props import CollectionProperty, EnumProperty, IntProperty, PointerProp
 PROFILE_SCHEMA_VERSION = 1
 UUID_KEY = "_lodify_uuid"
 GENERATED_PROFILE_KEY = "_lodify_profile_id"
+MODIFIER_OWNERS_KEY = "_lodify_modifier_owners"
+_MISSING = object()
+
+
+def _modifier_owner_map(obj):
+    """Return the object-level fallback map used by Blender versions that
+    do not allow custom properties directly on Modifier data blocks.
+    """
+    if obj is None:
+        return {}
+    raw = obj.get(MODIFIER_OWNERS_KEY)
+    if isinstance(raw, dict):
+        return {str(key): str(value) for key, value in raw.items()}
+    if isinstance(raw, str) and raw:
+        try:
+            decoded = json.loads(raw)
+            if isinstance(decoded, dict):
+                return {str(key): str(value) for key, value in decoded.items()}
+        except (TypeError, ValueError):
+            pass
+    return {}
+
+
+def get_modifier_owner(obj, modifier):
+    """Read a profile owner from a modifier, with an object-level fallback."""
+    if modifier is None:
+        return None
+    try:
+        owner = modifier.get(GENERATED_PROFILE_KEY)
+        if owner:
+            return str(owner)
+    except (AttributeError, TypeError, RuntimeError):
+        pass
+    return _modifier_owner_map(obj).get(getattr(modifier, "name", ""))
+
+
+def set_modifier_owner(obj, modifier, profile_id):
+    """Mark a generated modifier without assuming Modifier ID properties exist."""
+    if obj is None or modifier is None:
+        return
+    try:
+        modifier[GENERATED_PROFILE_KEY] = profile_id
+        return
+    except (TypeError, RuntimeError):
+        pass
+    owners = _modifier_owner_map(obj)
+    owners[getattr(modifier, "name", "")] = str(profile_id)
+    obj[MODIFIER_OWNERS_KEY] = json.dumps(owners, ensure_ascii=True, separators=(",", ":"))
+
+
+def clear_modifier_owner(obj, modifier_name):
+    """Remove an object-level modifier ownership entry after reset/apply."""
+    owners = _modifier_owner_map(obj)
+    if modifier_name not in owners:
+        return
+    owners.pop(modifier_name, None)
+    if owners:
+        obj[MODIFIER_OWNERS_KEY] = json.dumps(owners, ensure_ascii=True, separators=(",", ":"))
+    elif MODIFIER_OWNERS_KEY in obj:
+        del obj[MODIFIER_OWNERS_KEY]
+
+
+def get_geometry_node_input(modifier, identifier, default=None):
+    """Read a Geometry Nodes input on both Blender 4.x and 5.2+ APIs."""
+    if modifier is None or not identifier:
+        return default
+    try:
+        inputs = modifier.properties.inputs
+        socket = getattr(inputs, identifier)
+        return socket.value
+    except (AttributeError, TypeError, RuntimeError):
+        pass
+    try:
+        return modifier.get(identifier, default)
+    except (AttributeError, TypeError, RuntimeError):
+        return default
+
+
+def set_geometry_node_input(modifier, identifier, value):
+    """Write a Geometry Nodes input on both Blender 4.x and 5.2+ APIs."""
+    if modifier is None or not identifier:
+        return False
+    try:
+        inputs = modifier.properties.inputs
+        socket = getattr(inputs, identifier)
+        socket.value = value
+        return True
+    except (AttributeError, TypeError, RuntimeError, ValueError):
+        pass
+    try:
+        modifier[identifier] = value
+        return True
+    except (AttributeError, TypeError, RuntimeError, ValueError):
+        return False
+
+
+def _geometry_node_input_identifiers(modifier):
+    group = getattr(modifier, "node_group", None)
+    interface = getattr(group, "interface", None)
+    items_tree = getattr(interface, "items_tree", None) if interface else None
+    if items_tree is None:
+        return []
+    return [
+        item.identifier
+        for item in items_tree
+        if getattr(item, "item_type", None) == "SOCKET"
+        and getattr(item, "in_out", None) == "INPUT"
+    ]
 
 
 def _json_safe(value):
@@ -22,6 +130,32 @@ def _json_safe(value):
         return [_json_safe(item) for item in value]
     except TypeError:
         return str(value)
+
+
+def _snapshot_modifier_properties(modifier):
+    """Read optional Geometry Nodes modifier values where the Blender build
+    exposes Modifier ID properties. Some supported builds expose none.
+    """
+    properties = {}
+    identifiers = _geometry_node_input_identifiers(modifier)
+    for identifier in identifiers:
+        value = get_geometry_node_input(modifier, identifier, _MISSING)
+        if value is not _MISSING:
+            properties[identifier] = _json_safe(value)
+    if properties:
+        return properties
+    try:
+        keys = list(modifier.keys())
+    except (AttributeError, TypeError, RuntimeError):
+        return properties
+    for key in keys:
+        if str(key).startswith("_"):
+            continue
+        try:
+            properties[key] = _json_safe(modifier[key])
+        except (KeyError, TypeError, RuntimeError):
+            continue
+    return properties
 
 
 class LODIFY_Profile(bpy.types.PropertyGroup):
@@ -66,6 +200,18 @@ def _ensure_uuid(id_block):
     except Exception:
         # Linked/read-only datablocks cannot always accept custom properties.
         return f"name:{getattr(id_block, 'name', '')}"
+
+
+def assign_new_uuid(id_block):
+    """Give a copied datablock a fresh identity for snapshot lookups."""
+    if id_block is None:
+        return ""
+    value = uuid.uuid4().hex
+    try:
+        id_block[UUID_KEY] = value
+    except Exception:
+        return f"name:{getattr(id_block, 'name', '')}"
+    return value
 
 
 def _find_by_uuid(collection, value):
@@ -149,11 +295,7 @@ def capture_snapshot(scene, profile):
                 state["ratio"] = float(modifier.ratio)
             elif modifier.type == "NODES":
                 state["node_group"] = modifier.node_group.name if modifier.node_group else ""
-                state["properties"] = {
-                    key: _json_safe(modifier[key])
-                    for key in modifier.keys()
-                    if not key.startswith("_")
-                }
+                state["properties"] = _snapshot_modifier_properties(modifier)
             modifiers.append(state)
 
         objects.append(
@@ -285,11 +427,12 @@ def restore_snapshot(scene, profile):
             _restore_material_slots(obj, state.get("material_ids", []))
             saved_modifiers = {item.get("name"): item for item in state.get("modifiers", [])}
             for modifier in list(obj.modifiers):
-                owned_by_profile = modifier.get(GENERATED_PROFILE_KEY) == profile.profile_id
-                legacy_owned = modifier.get(GENERATED_PROFILE_KEY) is None and obj.get("_lod_geo_lod_created")
+                owned_by_profile = get_modifier_owner(obj, modifier) == profile.profile_id
+                legacy_owned = get_modifier_owner(obj, modifier) is None and obj.get("_lod_geo_lod_created")
                 if (owned_by_profile or legacy_owned) and modifier.name not in saved_modifiers:
                     try:
                         obj.modifiers.remove(modifier)
+                        clear_modifier_owner(obj, modifier.name)
                     except Exception:
                         pass
             for modifier in obj.modifiers:
@@ -303,9 +446,11 @@ def restore_snapshot(scene, profile):
                         modifier.ratio = modifier_state["ratio"]
                     elif modifier.type == "NODES":
                         for key, value in modifier_state.get("properties", {}).items():
-                            modifier[key] = value
+                            set_geometry_node_input(modifier, key, value)
                 except Exception:
                     pass
+            if "_lod_geo_lod_created" in obj:
+                del obj["_lod_geo_lod_created"]
             restored_objects += 1
         except Exception:
             continue
