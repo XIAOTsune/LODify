@@ -7,6 +7,20 @@ DOMAIN = __package__
 ZH_DICT = {
     # --- Header ---
     "LODify": "LODify 优化工具",
+    "0. Render Profile": "0. 渲染优化方案",
+    "New Profile": "新建方案",
+    "Capture": "捕获状态",
+    "Restore": "一键恢复",
+    "Profile": "方案",
+    "Name": "名称",
+    "Render Camera": "渲染相机",
+    "Scope": "作用范围",
+    "State": "状态",
+    "Create a profile before optimizing.": "请先创建优化方案，再执行优化。",
+    "New": "新建",
+    "Ready": "就绪",
+    "Restored": "已恢复",
+    "Error": "错误",
 
     # --- Properties (这些是我们在 Step 2 中恢复为英文的属性值) ---
     "Custom": "自定义",

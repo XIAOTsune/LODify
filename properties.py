@@ -76,6 +76,7 @@ class LOD_Props(bpy.types.PropertyGroup):
     
     default_col_colors: StringProperty() 
     last_shading: StringProperty()
+    last_shading_type: StringProperty()
 
     # Image Management
     image_list: CollectionProperty(type=LOD_ImageItem)

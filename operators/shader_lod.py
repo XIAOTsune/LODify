@@ -1,6 +1,7 @@
 import bpy
 import time
 from mathutils import Vector
+from ..core.profile import GENERATED_PROFILE_KEY, ensure_active_profile, get_active_profile, get_profile_camera, get_profile_objects, restore_material_assignments
 
 class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
     """Update shader details (Normal/Displacement) asynchronously"""
@@ -18,6 +19,9 @@ class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
     TIME_BUDGET = 0.05 
 
     def modal(self, context, event):
+        if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
         if event.type == 'TIMER':
             if not self._queue:
                 return self.finish(context)
@@ -45,11 +49,13 @@ class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene.lod_props
+        profile = ensure_active_profile(context.scene)
+        self.profile_id = profile.profile_id
         if not scn.exp_shader_lod_enabled:
             self.report({'WARNING'}, "Enable 'Shader LOD' first.")
             return {'CANCELLED'}
 
-        cam = scn.lod_camera or context.scene.camera
+        cam = get_profile_camera(context.scene, profile)
         if not cam:
             self.report({'ERROR'}, "No Camera found.")
             return {'CANCELLED'}
@@ -61,7 +67,7 @@ class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
         self._queue = []
         
         # 预先获取所有可见 Mesh
-        for obj in context.scene.objects:
+        for obj in get_profile_objects(context.scene, profile):
             if obj.type != 'MESH' or obj.hide_viewport: continue
             if not obj.material_slots: continue
             
@@ -109,9 +115,19 @@ class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
         
         modified = False
 
-        for slot in obj.material_slots:
+        for slot_index, slot in enumerate(obj.material_slots):
             mat = slot.material
             if not mat or not mat.use_nodes or not mat.node_tree: continue
+
+            # Shared source materials cannot hold different LOD values per object.
+            # Create one profile-owned variant per object slot and leave the source intact.
+            if mat.get(GENERATED_PROFILE_KEY) != self.profile_id:
+                variant = mat.copy()
+                variant.name = f"LODify_{self.profile_id[:8]}_{obj.name}_{slot_index}"
+                variant[GENERATED_PROFILE_KEY] = self.profile_id
+                variant["_lodify_source_material"] = mat.name
+                slot.material = variant
+                mat = variant
             
             # 遍历节点
             for node in mat.node_tree.nodes:
@@ -201,6 +217,13 @@ class LOD_OT_ShaderLODUpdateAsync(bpy.types.Operator):
         self.report({'INFO'}, f"Shader LOD Updated: {self._updated_count} materials adjusted.")
         return {'FINISHED'}
 
+    def cancel(self, context):
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
+        self._queue.clear()
+        self.report({'WARNING'}, "Shader LOD cancelled; generated material variants were kept for review.")
+
 
 class LOD_OT_ShaderLODReset(bpy.types.Operator):
     """Restore original shader parameters"""
@@ -209,6 +232,15 @@ class LOD_OT_ShaderLODReset(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
+        profile = get_active_profile(context.scene)
+        if profile and (profile.snapshot_json or profile.snapshot_text_name):
+            try:
+                message = restore_material_assignments(profile)
+                self.report({'INFO'}, message)
+                return {'FINISHED'}
+            except Exception as exc:
+                self.report({'ERROR'}, str(exc))
+                return {'CANCELLED'}
         count = 0
         for mat in bpy.data.materials:
             if not mat.use_nodes or not mat.node_tree: continue

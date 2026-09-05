@@ -26,6 +26,7 @@ ADDON_WEBSITE_URL = "https://github.com/XIAOTsune/LODify" # 默认值
 AUTHOR_NAME = "XIAOTsune" # 你想要显示在标题栏的名字
 
 from . import properties
+from .core import profile
 from . import ui 
 from . import operators
 from . import i18n
@@ -66,10 +67,10 @@ def load_manifest_info():
 bl_info = {
     "name": "LODify",
     "author": "小T_sune",
-    "version": (2, 9, 0),
+    "version": (3, 0, 0),
     "blender": (4, 2, 0), # 设置为你支持的最低版本
     "location": "View3D > Sidebar > Optimize",
-    "description": "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt",
+    "description": "Non-destructive render optimization with profiles, textures and LOD",
     "warning": "",
     "doc_url": "https://github.com/XIAOTsune/LODify",
     "category": "Object",
@@ -79,6 +80,7 @@ bl_info = {
 modules = [
     i18n,
     properties,
+    profile,
     ui.lists,
     ui.main_panels,
     operators.analyzer,

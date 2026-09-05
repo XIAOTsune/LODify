@@ -2,6 +2,7 @@ import bpy
 import os
 from .. import AUTHOR_NAME
 from ..i18n import i18n
+from ..core.profile import get_active_profile
 
 class LOD_PT_MainPanel:
     bl_space_type = 'VIEW_3D'
@@ -24,10 +25,42 @@ class LOD_PT_Header(LOD_PT_MainPanel, bpy.types.Panel):
         row.label(text=i18n("LODify"), icon='MODIFIER')
         layout.separator()
 
+
+class LOD_PT_Profile(LOD_PT_MainPanel, bpy.types.Panel):
+    bl_label = "0. Render Profile"
+    bl_idname = "LOD_PT_Profile"
+    bl_order = 1
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        profiles = scene.lodify_profiles
+        profile = get_active_profile(scene)
+
+        row = layout.row(align=True)
+        row.operator("lodify.profile_create", text=i18n("New Profile"), icon="ADD")
+        if profiles:
+            row.operator("lodify.profile_capture", text=i18n("Capture"), icon="REC")
+        layout.template_list("LODIFY_UL_Profiles", "", scene, "lodify_profiles", scene, "lodify_active_profile", rows=2)
+
+        if profile:
+            col = layout.column(align=True)
+            col.prop(profile, "name", text=i18n("Name"))
+            col.prop(profile, "camera", text=i18n("Render Camera"), icon="CAMERA_DATA")
+            col.prop(profile, "scope_collection", text=i18n("Scope"), icon="OUTLINER_COLLECTION")
+
+            status_row = layout.row()
+            status_icon = "CHECKMARK" if profile.status == "CAPTURED" else "INFO"
+            status_row.label(text=f"{i18n('State')}: {i18n(profile.status.title())}", icon=status_icon)
+            actions = layout.row(align=True)
+            actions.operator("lodify.profile_restore", text=i18n("Restore"), icon="LOOP_BACK")
+        else:
+            layout.label(text=i18n("Create a profile before optimizing."), icon="INFO")
+
 class LOD_PT_CollectionAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "1. Collection Analyzer" # Blender 会根据 i18n 字典自动翻译这个字符串 
     bl_idname = "LOD_PT_CollectionAnalyzer"
-    bl_order = 1
+    bl_order = 2
 
     # 【修复操作】删除或注释掉这个函数
     # def draw_header(self, context):
@@ -69,7 +102,7 @@ class LOD_PT_CollectionAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
 class LOD_PT_ViewAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "2. View Analyzer"
     bl_idname = "LOD_PT_ViewAnalyzer"
-    bl_order = 2
+    bl_order = 3
 
     # 【修复操作】删除或注释掉这个函数
     # def draw_header(self, context):
@@ -92,7 +125,7 @@ class LOD_PT_ViewAnalyzer(LOD_PT_MainPanel, bpy.types.Panel):
 class LOD_PT_ImageResizer(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "3. Image Resizer"
     bl_idname = "LOD_PT_ImageResizer"
-    bl_order = 3
+    bl_order = 4
 
     # 【修复操作】删除或注释掉这个函数 (这是导致 "Image Resizer" 重复且不翻译的罪魁祸首)
     # def draw_header(self, context):
@@ -194,7 +227,7 @@ class LOD_PT_ImageResizer(LOD_PT_MainPanel, bpy.types.Panel):
 class LOD_PT_LODManager(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "4. LOD Manager"
     bl_idname = "LOD_PT_LODManager"
-    bl_order = 4
+    bl_order = 5
 
     # 【修复操作】删除或注释掉这个函数
     # def draw_header(self, context):
@@ -305,7 +338,7 @@ class LOD_PT_LODManager(LOD_PT_MainPanel, bpy.types.Panel):
 class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "5. Clean Up & Storage"
     bl_idname = "LOD_PT_DuplicateRemover"
-    bl_order = 5
+    bl_order = 6
     
     # 【修复操作】删除或注释掉这个函数
     # def draw_header(self, context):
@@ -360,7 +393,7 @@ class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
 class LOD_PT_Experimental(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "6. Experimental Features"
     bl_idname = "LOD_PT_Experimental"
-    bl_order = 6
+    bl_order = 7
     bl_options = {'DEFAULT_CLOSED'}
 
     # 【修复操作】删除或注释掉这个函数
@@ -405,6 +438,7 @@ class LOD_PT_Experimental(LOD_PT_MainPanel, bpy.types.Panel):
             row.operator("lod.shader_lod_reset", text=i18n("Reset"), icon='LOOP_BACK')
 classes = (
     LOD_PT_Header,
+    LOD_PT_Profile,
     LOD_PT_CollectionAnalyzer,
     LOD_PT_ViewAnalyzer,
     LOD_PT_ImageResizer,

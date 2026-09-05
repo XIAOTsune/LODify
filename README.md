@@ -7,13 +7,23 @@
 
 [![Blender](https://img.shields.io/badge/Blender-4.2%2B-E87D0D?style=for-the-badge&logo=blender&logoColor=white)](https://www.blender.org/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/XIAOTsune/LODify)
-[![Version](https://img.shields.io/badge/Version-2.9.0-111111?style=for-the-badge)](https://github.com/XIAOTsune/LODify/releases)
+[![Version](https://img.shields.io/badge/Version-3.0.0-111111?style=for-the-badge)](https://github.com/XIAOTsune/LODify/releases)
 
 [Download Release](https://github.com/XIAOTsune/LODify/releases) · [View Repository](https://github.com/XIAOTsune/LODify)
 
 </div>
 
 ---
+
+## LODify 3.0 | 非破坏式渲染优化
+
+LODify 3.0 introduces render optimization profiles. A profile records the original object, material, image, collection, and modifier state before optimization, so the generated preview can be restored from Blender with one click. Profiles can also select a render camera and limit the operation to a collection.
+
+LODify 3.0 引入渲染优化方案。方案会在优化前记录物体、材质、图片、集合和修改器状态，所有优化默认保留源数据，并可在 Blender 中一键恢复。每个方案还可以指定渲染相机和作用集合范围。
+
+The 3.0 foundation also makes geometry modifiers and shader material variants profile-owned, protects source texture paths when switching generated variants, terminates camera worker processes on cancellation, removes automatic global orphan purging, and validates generated-folder deletion paths.
+
+3.0 的基础架构还会让几何修改器和材质变体归属于具体方案；切换生成贴图时始终保留原图路径；取消相机优化时清理 worker 子进程；不再自动执行全局孤立数据清理；删除缓存目录前会验证路径范围。
 
 ## Overview | 简介
 
