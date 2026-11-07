@@ -69,6 +69,9 @@ def collect_files(paths: list[str]) -> list[Path]:
             if candidate.is_symlink():
                 fail(f"symbolic links are not supported: {candidate.relative_to(ROOT)}")
             if candidate.is_file():
+                relative = candidate.relative_to(ROOT)
+                if "__pycache__" in relative.parts or candidate.suffix == ".pyc":
+                    continue
                 files.add(candidate)
 
     if not files:
