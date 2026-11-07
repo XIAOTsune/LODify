@@ -2,7 +2,7 @@ schema_version = "1.0.0"
 
 
 id = "lodify_optimizer"
-version = "2.9.0"
+version = "3.0.0"
 name = "LODify"
 tagline = "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt"
 maintainer = "XIAOTsune"
@@ -27,4 +27,15 @@ wheels = [
 files = "Required to read and write texture files for resizing"
 
 [build]
-paths = ["."]
+paths = [
+    "__init__.py",
+    "blender_manifest.toml",
+    "README.md",
+    "core",
+    "i18n.py",
+    "operators",
+    "properties.py",
+    "ui",
+    "utils.py",
+    "wheels"
+]

@@ -7,7 +7,7 @@
 
 [![Blender](https://img.shields.io/badge/Blender-4.2%2B-E87D0D?style=for-the-badge&logo=blender&logoColor=white)](https://www.blender.org/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/XIAOTsune/LODify)
-[![Version](https://img.shields.io/badge/Version-2.9.0-111111?style=for-the-badge)](https://github.com/XIAOTsune/LODify/releases)
+[![Version](https://img.shields.io/badge/Version-3.0.0-111111?style=for-the-badge)](https://github.com/XIAOTsune/LODify/releases)
 
 [Download Release](https://github.com/XIAOTsune/LODify/releases) · [View Repository](https://github.com/XIAOTsune/LODify)
 
