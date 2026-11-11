@@ -140,9 +140,38 @@ class LOD_Props(bpy.types.PropertyGroup):
             items=[
                 ("DECIMATE", "Decimate Modifier", "Use standard Decimate modifier"),
                 ("GNODES", "Geometry Nodes", "Use Geometry Nodes (High Quality)"),
+                ("FEATURE_GUIDED", "Feature Guided Decimate", "Use feature-weighted protection with Decimate"),
+                ("FEATURE_ANALYSIS", "Feature Analysis", "Analyze shape features without changing the mesh"),
             ],
             default="GNODES",
         )
+
+    feature_angle_threshold: FloatProperty(
+        name="Feature Angle",
+        description="Dihedral angle threshold for candidate feature edges",
+        default=45.0,
+        min=1.0,
+        max=179.0,
+    )
+    feature_min_path_edges: IntProperty(
+        name="Minimum Path Length",
+        description="Hide feature chains shorter than this number of edges",
+        default=3,
+        min=1,
+        max=100,
+    )
+    feature_protect_strength: FloatProperty(
+        name="Protection Strength",
+        description="Soft influence of detected feature vertices on Decimate collapse",
+        default=1.0,
+        min=0.0,
+        max=10.0,
+    )
+    feature_protect_sharp: BoolProperty(name="Protect Sharp Edges", default=True)
+    feature_protect_crease: BoolProperty(name="Protect Creases", default=True)
+    feature_protect_uv: BoolProperty(name="Protect UV Borders", default=True)
+    feature_protect_seam: BoolProperty(name="Protect Seams", default=False)
+    feature_protect_material: BoolProperty(name="Protect Material Borders", default=True)
     
     geo_lod_min_faces: IntProperty(
         name="Min Faces", 

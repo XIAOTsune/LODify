@@ -52,6 +52,18 @@ GN_INPUT_FACTOR = "LOD_Factor"      # 接口1：强度
 GN_INPUT_ANGLE = "Angle_Threshold" 
 GN_INPUT_MAX_DIST = "Max_Merge_Dist" # 接口2：角度阈值
 
+
+def _remove_feature_group(obj):
+    if not obj.get("_lod_feature_group_created"):
+        return False
+    group = obj.vertex_groups.get(obj.get("_lod_feature_group_name", ""))
+    if group:
+        obj.vertex_groups.remove(group)
+    for key in ("_lod_feature_group_created", "_lod_feature_group_name"):
+        if key in obj:
+            del obj[key]
+    return True
+
 # =============================================================================
 # Helper: 几何节点组构建
 # =============================================================================
@@ -271,6 +283,12 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
     def invoke(self, context, event):
         scn = context.scene.lod_props
         self.method = scn.geo_lod_method
+        if self.method == 'FEATURE_ANALYSIS':
+            self.report({'ERROR'}, "Feature Analysis does not create LOD modifiers.")
+            return {'CANCELLED'}
+        if self.method == 'FEATURE_GUIDED':
+            self.report({'ERROR'}, "Use Build Guided Decimate for the active mesh.")
+            return {'CANCELLED'}
         self.min_faces = scn.geo_lod_min_faces
         self.max_dist = scn.geo_lod_max_dist
         
@@ -324,6 +342,11 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
         """单个物体的处理逻辑 (从原 execute 提取)"""
         
         if self.method == 'DECIMATE':
+            if obj.get("_lod_feature_group_created"):
+                mod = obj.modifiers.get(DECIMATE_MOD_NAME)
+                if mod:
+                    mod.vertex_group = ""
+                _remove_feature_group(obj)
             # 如果存在 GN 修改器则移除 (互斥逻辑)
             if obj.modifiers.get(GEO_NODES_MOD_NAME):
                 obj.modifiers.remove(obj.modifiers.get(GEO_NODES_MOD_NAME))
@@ -340,6 +363,7 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
             # 如果存在 Decimate 修改器则移除
             if obj.modifiers.get(DECIMATE_MOD_NAME):
                 obj.modifiers.remove(obj.modifiers.get(DECIMATE_MOD_NAME))
+            _remove_feature_group(obj)
 
             mod = obj.modifiers.get(GEO_NODES_MOD_NAME)
             force_rebuild = False
@@ -387,6 +411,10 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
     _total_tasks = 0
     _processed = 0
     _updated_count = 0
+    _unchanged_count = 0
+    _protected_count = 0
+    _error_messages = []
+    _diagnostics = []
     TIME_BUDGET = 0.05
 
     def modal(self, context, event):
@@ -395,8 +423,10 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
             start_time = time.time()
             while self._queue:
                 obj = self._queue.pop(0)
-                try: self.process_object(context, obj)
-                except: pass
+                try:
+                    self.process_object(context, obj)
+                except Exception as error:
+                    self._error_messages.append(f"{obj.name}: {error}")
                 self._processed += 1
                 if (time.time() - start_time) > self.TIME_BUDGET: break
             context.window_manager.progress_update(self._processed)
@@ -405,13 +435,16 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
     def invoke(self, context, event):
         scn = context.scene.lod_props
         if not scn.geo_lod_enabled: return {'CANCELLED'}
+        if scn.geo_lod_method == 'FEATURE_ANALYSIS':
+            self.report({'ERROR'}, "Feature Analysis does not update LOD modifiers.")
+            return {'CANCELLED'}
         self.cam = scn.lod_camera or context.scene.camera
         if not self.cam: 
             self.report({'ERROR'}, "No Camera found.")
             return {'CANCELLED'}
             
         method = scn.geo_lod_method
-        target_mod = DECIMATE_MOD_NAME if method == 'DECIMATE' else GEO_NODES_MOD_NAME
+        target_mod = DECIMATE_MOD_NAME if method in {'DECIMATE', 'FEATURE_GUIDED'} else GEO_NODES_MOD_NAME
         
         # 获取黑名单
         skipped_sources = utils.get_instance_sources(context.scene)   
@@ -423,7 +456,11 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
                 if obj in skipped_sources:
                     continue
 
-                if obj.modifiers.get(target_mod):
+                has_feature_group = (
+                    obj.get("_lod_feature_group_created")
+                    and obj.vertex_groups.get(obj.get("_lod_feature_group_name", ""))
+                )
+                if obj.modifiers.get(target_mod) and (method != 'FEATURE_GUIDED' or has_feature_group):
                     self._queue.append(obj)
         
         if not self._queue:
@@ -433,12 +470,17 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
         self._total_tasks = len(self._queue)
         self._processed = 0
         self._updated_count = 0
+        self._unchanged_count = 0
+        self._protected_count = 0
+        self._error_messages = []
+        self._diagnostics = []
         self.method = method
         
         # 全局参数缓存
         self.min_protection = scn.geo_lod_min_ratio
         self.min_faces = scn.geo_lod_min_faces
         self.max_dist = scn.geo_lod_max_dist # 用户设置的最大塌陷距离
+        self.feature_protect_strength = scn.feature_protect_strength
         
         self.gn_id_factor = None
         self.gn_id_dist = None
@@ -460,30 +502,40 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
         if hasattr(obj.data, "polygons") and len(obj.data.polygons) < self.min_faces:
             is_protected_by_faces = True
 
-        # 2. 计算 Factor
+        # 2. Calculate the retained-face ratio from the camera projection.
+        raw_ratio = None
         if is_protected_by_faces:
             target_factor = 1.0
+            self._protected_count += 1
         else:
-            if hasattr(utils, 'get_normalized_screen_ratio'):
-                raw_ratio = utils.get_normalized_screen_ratio(context.scene, obj, self.cam)
+            raw_ratio = utils.get_normalized_screen_ratio(context.scene, obj, self.cam)
+            if self.method == 'FEATURE_GUIDED':
+                target_factor = utils.get_feature_guided_lod_factor(raw_ratio, self.min_protection)
             else:
-                raw_ratio = 0.5 
-            
-            # 使用 Stepped 还是 Linear 取决于你，这里保持 Stepped 更稳定
-            if hasattr(utils, 'get_stepped_lod_factor'):
                 target_factor = utils.get_stepped_lod_factor(raw_ratio, self.min_protection)
-            else:
-                target_factor = 1.0
 
         # 3. 应用到修改器
         EPSILON = 0.001 
 
-        if self.method == 'DECIMATE':
+        if self.method in {'DECIMATE', 'FEATURE_GUIDED'}:
             mod = obj.modifiers.get(DECIMATE_MOD_NAME)
-            if mod and abs(mod.ratio - target_factor) > EPSILON:
-                mod.ratio = target_factor
-                obj.update_tag() 
-                self._updated_count += 1
+            if mod:
+                changed = False
+                if abs(mod.ratio - target_factor) > EPSILON:
+                    mod.ratio = target_factor
+                    changed = True
+                if self.method == 'FEATURE_GUIDED' and hasattr(mod, "vertex_group_factor"):
+                    if abs(mod.vertex_group_factor - self.feature_protect_strength) > EPSILON:
+                        mod.vertex_group_factor = self.feature_protect_strength
+                        changed = True
+                if changed:
+                    obj.update_tag()
+                    self._updated_count += 1
+                else:
+                    self._unchanged_count += 1
+                if len(self._diagnostics) < 3:
+                    screen_text = "min-face protection" if raw_ratio is None else f"screen {raw_ratio:.3f}"
+                    self._diagnostics.append(f"{obj.name}: {screen_text} -> ratio {target_factor:.3f}")
             
         elif self.method == 'GNODES':
             mod = obj.modifiers.get(GEO_NODES_MOD_NAME)
@@ -511,6 +563,8 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
                 if changed:
                     obj.update_tag() 
                     self._updated_count += 1
+                else:
+                    self._unchanged_count += 1
 
     def finish(self, context):
         context.window_manager.event_timer_remove(self._timer)
@@ -518,7 +572,17 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
         for win in context.window_manager.windows:
             for area in win.screen.areas:
                 if area.type == 'VIEW_3D': area.tag_redraw()
-        self.report({'INFO'}, f"Updated {self._updated_count} objects.")
+        message = (
+            f"Updated {self._updated_count}/{self._total_tasks}; unchanged {self._unchanged_count}, "
+            f"protected {self._protected_count}, errors {len(self._error_messages)}"
+        )
+        if self._diagnostics:
+            message += ". " + "; ".join(self._diagnostics)
+        if self._error_messages:
+            message += f". First error: {self._error_messages[0]}"
+            self.report({'WARNING'}, message[:1024])
+        else:
+            self.report({'INFO'}, message[:1024])
         return {'FINISHED'}
 
 class LOD_OT_GeoLODReset(bpy.types.Operator):
@@ -534,6 +598,7 @@ class LOD_OT_GeoLODReset(bpy.types.Operator):
                 obj.modifiers.remove(obj.modifiers.get(DECIMATE_MOD_NAME)); removed+=1
             if obj.modifiers.get(GEO_NODES_MOD_NAME): 
                 obj.modifiers.remove(obj.modifiers.get(GEO_NODES_MOD_NAME)); removed+=1
+            _remove_feature_group(obj)
             if "_lod_geo_lod_created" in obj: del obj["_lod_geo_lod_created"]
         self.report({'INFO'}, f"Reset {removed} objects.")
         return {'FINISHED'}
@@ -550,6 +615,8 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
     _total_tasks = 0
     _processed = 0
     _applied_count = 0
+    _reduced_faces = 0
+    _error_messages = []
     
     # 时间预算：每帧只允许占用 0.05秒，超过则留到下一帧处理
     TIME_BUDGET = 0.05 
@@ -574,6 +641,7 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
                     self.process_object(context, obj)
                 except Exception as e:
                     print(f"Apply Error on {obj.name}: {e}")
+                    self._error_messages.append(f"{obj.name}: {e}")
                 
                 self._processed += 1
                 
@@ -588,9 +656,12 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene.lod_props
+        if scn.geo_lod_method == 'FEATURE_ANALYSIS':
+            self.report({'ERROR'}, "Feature Analysis has no modifier to apply.")
+            return {'CANCELLED'}
         
         # 1. 确定要应用哪个修改器名字
-        self._target_mod_name = DECIMATE_MOD_NAME if scn.geo_lod_method == 'DECIMATE' else GEO_NODES_MOD_NAME
+        self._target_mod_name = DECIMATE_MOD_NAME if scn.geo_lod_method in {'DECIMATE', 'FEATURE_GUIDED'} else GEO_NODES_MOD_NAME
         
         # 2. 必须切换到 Object 模式
         if context.object and context.object.mode != 'OBJECT':
@@ -607,6 +678,10 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
         for obj in context.scene.objects:
             if obj.type != 'MESH': continue
             if obj.hide_viewport: continue # 跳过隐藏物体，因为 apply 需要物体可见
+            if context.scene.lod_props.geo_lod_method == 'FEATURE_GUIDED':
+                group_name = obj.get("_lod_feature_group_name", "")
+                if not obj.get("_lod_feature_group_created") or not obj.vertex_groups.get(group_name):
+                    continue
 
             mod = obj.modifiers.get(self._target_mod_name)
             if mod:
@@ -620,6 +695,8 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
         self._total_tasks = len(self._queue)
         self._processed = 0
         self._applied_count = 0
+        self._reduced_faces = 0
+        self._error_messages = []
         
         context.window_manager.progress_begin(0, self._total_tasks)
         self._timer = context.window_manager.event_timer_add(0.01, window=context.window)
@@ -640,17 +717,19 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
         # 2. 应用修改器
         # 注意：使用 modifier_apply 可能会比较慢，但在异步循环中是可以接受的
         mod = obj.modifiers.get(self._target_mod_name)
-        if mod:
-            try:
-                bpy.ops.object.modifier_apply(modifier=self._target_mod_name)
-                
-                # 3. 清理自定义属性标记
-                if "_lod_geo_lod_created" in obj:
-                    del obj["_lod_geo_lod_created"]
-                    
-                self._applied_count += 1
-            except Exception as e:
-                print(f"Failed to apply modifier for {obj.name}: {e}")
+        if not mod:
+            raise RuntimeError(f"Modifier {self._target_mod_name} was not found.")
+
+        before_faces = len(obj.data.polygons)
+        result = bpy.ops.object.modifier_apply(modifier=mod.name)
+        if 'FINISHED' not in result:
+            raise RuntimeError(f"Blender did not apply modifier {mod.name}.")
+
+        self._reduced_faces += max(0, before_faces - len(obj.data.polygons))
+        if "_lod_geo_lod_created" in obj:
+            del obj["_lod_geo_lod_created"]
+        _remove_feature_group(obj)
+        self._applied_count += 1
 
     def finish(self, context):
         context.window_manager.event_timer_remove(self._timer)
@@ -667,7 +746,15 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
             for area in win.screen.areas:
                 if area.type == 'VIEW_3D': area.tag_redraw()
                 
-        self.report({'INFO'}, f"Applied modifiers on {self._applied_count} objects.")
+        message = (
+            f"Applied {self._applied_count}/{self._total_tasks} modifiers; "
+            f"reduced {self._reduced_faces} faces, errors {len(self._error_messages)}"
+        )
+        if self._error_messages:
+            message += f". First error: {self._error_messages[0]}"
+            self.report({'WARNING'}, message[:1024])
+        else:
+            self.report({'INFO'}, message[:1024])
         return {'FINISHED'}
 
 classes = (

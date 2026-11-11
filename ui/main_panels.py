@@ -263,44 +263,82 @@ class LOD_PT_LODManager(LOD_PT_MainPanel, bpy.types.Panel):
             # 翻译: 算法/方法
             row.prop(scn, "geo_lod_method", text=i18n("Method"))
             
-            col = box.column(align=True)
-            # 翻译: 最小面数保护
-            col.prop(scn, "geo_lod_min_faces", text=i18n("Min Faces (Safety)"))
-            
-            if scn.geo_lod_method == 'DECIMATE':
-                # 翻译: 最小比例保护
-                col.prop(scn, "geo_lod_min_ratio", text=i18n("Min Ratio (Safety Floor)"), slider=True)
-                # 翻译: 防止近景或特写时的细节丢失
-                col.label(text=i18n("Prevents breaking close-up details"), icon='INFO')
+            if scn.geo_lod_method in {'FEATURE_ANALYSIS', 'FEATURE_GUIDED'}:
+                col = box.column(align=True)
+                if scn.geo_lod_method == 'FEATURE_ANALYSIS':
+                    col.label(text=i18n("Analysis only; mesh geometry is unchanged"), icon='INFO')
+                else:
+                    col.label(text=i18n("Soft feature protection; review the result"), icon='INFO')
+                col.prop(scn, "feature_angle_threshold", text=i18n("Feature Angle (Degrees)"))
+                col.prop(scn, "feature_min_path_edges", text=i18n("Minimum Chain Length"))
+                col.prop(scn, "feature_protect_sharp", text=i18n("Protect Sharp Edges"))
+                col.prop(scn, "feature_protect_crease", text=i18n("Protect Creases"))
+                col.prop(scn, "feature_protect_uv", text=i18n("Protect UV Borders"))
+                col.prop(scn, "feature_protect_seam", text=i18n("Protect Seams"))
+                col.prop(scn, "feature_protect_material", text=i18n("Protect Material Borders"))
+
+                row = box.row(align=True)
+                row.scale_y = 1.2
+                row.operator("lod.feature_analysis", text=i18n("Analyze Active Mesh"), icon="VIEWZOOM")
+                row.operator("lod.feature_analysis_clear", text=i18n("Clear Analysis"), icon="X")
+                if scn.geo_lod_method == 'FEATURE_GUIDED':
+                    col.prop(scn, "feature_protect_strength", text=i18n("Protection Strength"), slider=True)
+                    col.prop(scn, "geo_lod_min_faces", text=i18n("Min Faces (Safety)"))
+                    col.prop(scn, "geo_lod_min_ratio", text=i18n("Min Ratio (Safety Floor)"), slider=True)
+
+                    row = box.row()
+                    row.scale_y = 1.2
+                    op = row.operator("lod.feature_analysis", text=i18n("Build Guided Decimate"), icon="MOD_DECIM")
+                    op.create_modifier = True
+
+                    row = box.row(align=True)
+                    row.scale_y = 1.2
+                    row.operator("lod.geo_lod_update_async", text=i18n("Update Geometry (Async)"), icon="PLAY")
+                    row.operator("lod.geo_lod_reset", text=i18n("Reset Geometry"), icon="FILE_REFRESH")
+
+                    row = box.row()
+                    row.scale_y = 1.2
+                    row.alert = True
+                    row.operator("lod.geo_lod_apply_async", text=i18n("Apply Decimate (Destructive)"), icon="CHECKMARK")
             else:
-                # 翻译: 节点强度因子
-                col.prop(scn, "geo_lod_min_ratio", text=i18n("GN Strength Factor"), slider=True)
-                row = col.row(align=True)
-                # 翻译: 最大合并距离
-                row.prop(scn, "geo_lod_max_dist", text=i18n("Max Merge Distance"))
-                row.label(text="", icon='DRIVER_DISTANCE')
-                
-                box_in = col.box()
-                # 翻译: 自动边缘保护 (智能)
-                box_in.label(text=i18n("Auto Edge Protection"), icon='SHADING_WIRE')
-                # 翻译: 基于距离的空间塌陷
-                box_in.label(text=i18n("Distance-based Collapse"), icon='MOD_PARTICLES')
-            
-            row = box.row(align=True)
-            row.scale_y = 1.2
-            # 翻译: 安装修改器
-            row.operator("lod.geo_lod_setup", text=i18n("Setup Modifiers"), icon="MODIFIER")
-            # 翻译: 更新模型 (异步)
-            row.operator("lod.geo_lod_update_async", text=i18n("Update Geometry (Async)"), icon="PLAY")
-            # 翻译: 重置模型
-            row.operator("lod.geo_lod_reset", text=i18n("Reset Geometry",), icon="FILE_REFRESH")   
-            
-            row = box.row()
-            row.scale_y = 1.2
-            row.alert = True 
-            # 翻译: 应用减面 (不可逆) / 应用几何节点 (不可逆)
-            op_text = i18n("Apply Decimate (Destructive)") if scn.geo_lod_method == 'DECIMATE' else i18n("Apply GeoNodes (Destructive)")
-            row.operator("lod.geo_lod_apply_async", text=op_text, icon="CHECKMARK")
+                col = box.column(align=True)
+                # 翻译: 最小面数保护
+                col.prop(scn, "geo_lod_min_faces", text=i18n("Min Faces (Safety)"))
+
+                if scn.geo_lod_method == 'DECIMATE':
+                    # 翻译: 最小比例保护
+                    col.prop(scn, "geo_lod_min_ratio", text=i18n("Min Ratio (Safety Floor)"), slider=True)
+                    # 翻译: 防止近景或特写时的细节丢失
+                    col.label(text=i18n("Prevents breaking close-up details"), icon='INFO')
+                else:
+                    # 翻译: 节点强度因子
+                    col.prop(scn, "geo_lod_min_ratio", text=i18n("GN Strength Factor"), slider=True)
+                    row = col.row(align=True)
+                    # 翻译: 最大合并距离
+                    row.prop(scn, "geo_lod_max_dist", text=i18n("Max Merge Distance"))
+                    row.label(text="", icon='DRIVER_DISTANCE')
+
+                    box_in = col.box()
+                    # 翻译: 自动边缘保护 (智能)
+                    box_in.label(text=i18n("Auto Edge Protection"), icon='SHADING_WIRE')
+                    # 翻译: 基于距离的空间塌陷
+                    box_in.label(text=i18n("Distance-based Collapse"), icon='MOD_PARTICLES')
+
+                row = box.row(align=True)
+                row.scale_y = 1.2
+                # 翻译: 安装修改器
+                row.operator("lod.geo_lod_setup", text=i18n("Setup Modifiers"), icon="MODIFIER")
+                # 翻译: 更新模型 (异步)
+                row.operator("lod.geo_lod_update_async", text=i18n("Update Geometry (Async)"), icon="PLAY")
+                # 翻译: 重置模型
+                row.operator("lod.geo_lod_reset", text=i18n("Reset Geometry",), icon="FILE_REFRESH")
+
+                row = box.row()
+                row.scale_y = 1.2
+                row.alert = True
+                # 翻译: 应用减面 (不可逆) / 应用几何节点 (不可逆)
+                op_text = i18n("Apply Decimate (Destructive)") if scn.geo_lod_method == 'DECIMATE' else i18n("Apply GeoNodes (Destructive)")
+                row.operator("lod.geo_lod_apply_async", text=op_text, icon="CHECKMARK")
 
 class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
     bl_label = "5. Clean Up & Storage"

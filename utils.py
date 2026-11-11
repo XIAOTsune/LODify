@@ -1,4 +1,5 @@
 import bpy
+import math
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
@@ -22,8 +23,8 @@ def calculate_screen_coverage(scene, obj, camera):
     # 获取物体包围盒的 8 个顶点（世界坐标）
     bbox_corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
     
-    min_x, max_x = 1.0, 0.0
-    min_y, max_y = 1.0, 0.0
+    min_x, max_x = float("inf"), float("-inf")
+    min_y, max_y = float("inf"), float("-inf")
     in_front = False
 
     # 将所有顶点投影到 2D 屏幕空间 (0.0 ~ 1.0)
@@ -31,7 +32,7 @@ def calculate_screen_coverage(scene, obj, camera):
         co_2d = world_to_camera_view(scene, camera, corner)
         
         # co_2d.z 是深度，负数表示在相机背后
-        if co_2d.z > 0:
+        if co_2d.z > 0 and math.isfinite(co_2d.x) and math.isfinite(co_2d.y):
             in_front = True
             min_x = min(min_x, co_2d.x)
             max_x = max(max_x, co_2d.x)
@@ -51,6 +52,15 @@ def calculate_screen_coverage(scene, obj, camera):
     if max_x < 0 or min_x > 1 or max_y < 0 or min_y > 1:
         # 虽然在相机前方，但在视锥体外面
         return 0, False
+
+    min_x = max(0.0, min_x)
+    max_x = min(1.0, max_x)
+    min_y = max(0.0, min_y)
+    max_y = min(1.0, max_y)
+    if min_x >= max_x or min_y >= max_y:
+        return 0, False
+    width = max_x - min_x
+    height = max_y - min_y
 
     # 转换为像素值
     pixel_width = width * real_x
@@ -100,6 +110,13 @@ def get_stepped_lod_factor(raw_ratio, min_protection=0.01):
     # 如果计算出的 target_factor 比用户设置的底限还要低，则提升至底限
     # 但如果 target_factor 本来就是 1.0 (全屏)，则不需要降低
     return max(target_factor, min_protection)
+
+
+def get_feature_guided_lod_factor(raw_ratio, min_ratio=0.01):
+    """Scale retained faces with projected area, bounded by the user safety floor."""
+    ratio = min(1.0, max(0.0, float(raw_ratio)))
+    floor = min(1.0, max(0.01, float(min_ratio)))
+    return max(floor, ratio * ratio)
 
 def get_collection_vertex_count(collection):
     """递归计算集合内所有 Mesh 对象的顶点总数"""
