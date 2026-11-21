@@ -17,6 +17,19 @@ def _camera_cut_frames(scene, start, end):
     return {frame for frame in frames if start <= frame <= end}
 
 
+def _camera_for_frame(scene, frame, explicit_camera=None, fallback_camera=None):
+    if explicit_camera:
+        return explicit_camera
+
+    camera = fallback_camera or scene.camera
+    for marker in sorted(scene.timeline_markers, key=lambda item: item.frame):
+        if marker.frame > frame:
+            break
+        if marker.camera:
+            camera = marker.camera
+    return camera
+
+
 def _is_animated_mesh_supported(obj):
     if obj.data.shape_keys:
         return "Shape keys"
@@ -66,6 +79,7 @@ class LOD_OT_AnimationAnalyze(bpy.types.Operator):
         self.old_frame = scene.frame_current
         self.old_subframe = scene.frame_subframe
         self.old_camera = scene.camera
+        self.fallback_camera = scene.camera
         self.explicit_camera = props.animation_camera
         self.settings_snapshot = get_animation_settings_snapshot(scene)
         self.start = scene.frame_start
@@ -100,7 +114,12 @@ class LOD_OT_AnimationAnalyze(bpy.types.Operator):
         if self.index < len(self.frames):
             frame = self.frames[self.index]
             self.scene.frame_set(frame)
-            camera = self.explicit_camera or self.scene.camera
+            camera = _camera_for_frame(
+                self.scene,
+                frame,
+                self.explicit_camera,
+                self.fallback_camera,
+            )
             if camera:
                 depsgraph = context.evaluated_depsgraph_get()
                 eval_camera = camera.evaluated_get(depsgraph)

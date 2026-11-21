@@ -3,6 +3,18 @@ import time
 import math
 from mathutils import Vector
 from .. import utils
+from ..core.profile import (
+    GENERATED_PROFILE_KEY,
+    assign_new_uuid,
+    clear_modifier_owner,
+    ensure_active_profile,
+    get_modifier_owner,
+    get_geometry_node_input,
+    get_profile_camera,
+    get_profile_objects,
+    set_geometry_node_input,
+    set_modifier_owner,
+)
 
 
 def _iter_group_interface_items(node_group):
@@ -279,6 +291,9 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
     TIME_BUDGET = 0.05 
 
     def modal(self, context, event):
+        if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
         if event.type == 'TIMER':
             # 如果队列为空，结束
             if not self._queue:
@@ -308,6 +323,8 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene.lod_props
+        profile = ensure_active_profile(context.scene)
+        self.profile_id = profile.profile_id
         self.method = scn.geo_lod_method
         self.min_faces = scn.geo_lod_min_faces
         self.max_dist = scn.geo_lod_max_dist
@@ -333,7 +350,7 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
         # 2. 构建任务队列
         self._queue = []
         # 遍历场景所有物体
-        for obj in context.scene.objects:
+        for obj in get_profile_objects(context.scene, profile):
             if obj.type != 'MESH': continue
 
             #  如果是实例源，跳过优化（保护母体）
@@ -363,31 +380,48 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
 
     def process_object(self, obj):
         """单个物体的处理逻辑 (从原 execute 提取)"""
+
+        def owned(modifier):
+            return modifier and (
+                get_modifier_owner(obj, modifier) == self.profile_id
+                or (get_modifier_owner(obj, modifier) is None and obj.get("_lod_geo_lod_created"))
+                or _is_legacy_guided_modifier(obj, modifier)
+            )
         
         if self.method == 'DECIMATE':
             mod = obj.modifiers.get(DECIMATE_MOD_NAME)
+            if mod and not owned(mod):
+                return
             if mod and _is_legacy_guided_modifier(obj, mod):
                 mod.vertex_group = ""
                 mod.ratio = 1.0
             _remove_legacy_feature_group(obj)
             # 如果存在 GN 修改器则移除 (互斥逻辑)
+            if obj.modifiers.get(GEO_NODES_MOD_NAME) and not owned(obj.modifiers.get(GEO_NODES_MOD_NAME)):
+                return
             if obj.modifiers.get(GEO_NODES_MOD_NAME):
                 obj.modifiers.remove(obj.modifiers.get(GEO_NODES_MOD_NAME))
-            
+                clear_modifier_owner(obj, GEO_NODES_MOD_NAME)
             if not mod:
                 mod = obj.modifiers.new(DECIMATE_MOD_NAME, 'DECIMATE')
                 mod.decimate_type = 'COLLAPSE'
                 mod.ratio = 1.0 # 初始设为 1.0，防止刚加上去模型就消失
+                set_modifier_owner(obj, mod, self.profile_id)
                 obj["_lod_geo_lod_created"] = True
                 self._created_count += 1
                 
         elif self.method == 'GNODES':
             # 如果存在 Decimate 修改器则移除
+            if obj.modifiers.get(DECIMATE_MOD_NAME) and not owned(obj.modifiers.get(DECIMATE_MOD_NAME)):
+                return
             if obj.modifiers.get(DECIMATE_MOD_NAME):
                 obj.modifiers.remove(obj.modifiers.get(DECIMATE_MOD_NAME))
+                clear_modifier_owner(obj, DECIMATE_MOD_NAME)
             _remove_legacy_feature_group(obj)
 
             mod = obj.modifiers.get(GEO_NODES_MOD_NAME)
+            if mod and not owned(mod):
+                return
             force_rebuild = False
             
             # 检查是否使用了旧版节点组
@@ -402,6 +436,7 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
                 if mod: obj.modifiers.remove(mod)
                 mod = obj.modifiers.new(name=GEO_NODES_MOD_NAME, type='NODES')
                 mod.node_group = self.lod_group
+                set_modifier_owner(obj, mod, self.profile_id)
                 obj["_lod_geo_lod_created"] = True
                 self._created_count += 1
             
@@ -409,8 +444,9 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
                 mod.node_group = self.lod_group
                 self._created_count += 1
 
-            if _set_geometry_node_input(mod, self.gn_id_dist, self.max_dist):
-                obj.update_tag()
+            # 初始化参数
+            if self.gn_id_dist:
+                set_geometry_node_input(mod, self.gn_id_dist, self.max_dist)
 
     def finish(self, context):
         context.window_manager.event_timer_remove(self._timer)
@@ -426,6 +462,13 @@ class LOD_OT_GeoLODSetup(bpy.types.Operator):
             message += f" Errors: {len(self._error_messages)}. First error: {self._error_messages[0]}"
         self.report({'WARNING'} if self._error_messages else {'INFO'}, message[:1024])
         return {'FINISHED'}
+
+    def cancel(self, context):
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
+        self._queue.clear()
+        self.report({'WARNING'}, "Geometry setup cancelled; created modifiers were kept for review.")
 
 class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
 
@@ -446,6 +489,9 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
     TIME_BUDGET = 0.05
 
     def modal(self, context, event):
+        if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
         if event.type == 'TIMER':
             if not self._queue: return self.finish(context)
             start_time = time.time()
@@ -462,8 +508,10 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene.lod_props
+        profile = ensure_active_profile(context.scene)
+        self.profile_id = profile.profile_id
         if not scn.geo_lod_enabled: return {'CANCELLED'}
-        self.cam = scn.lod_camera or context.scene.camera
+        self.cam = get_profile_camera(context.scene, profile)
         if not self.cam: 
             self.report({'ERROR'}, "No Camera found.")
             return {'CANCELLED'}
@@ -475,14 +523,17 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
         skipped_sources = utils.get_instance_sources(context.scene)   
 
         self._queue = []
-        for obj in context.scene.objects:
+        for obj in get_profile_objects(context.scene, profile):
             if obj.type == 'MESH' and not obj.hide_viewport:
                 # 如果是实例源就跳过计算
                 if obj in skipped_sources:
                     continue
 
-                mod = obj.modifiers.get(target_mod)
-                if mod and not _is_legacy_guided_modifier(obj, mod):
+                modifier = obj.modifiers.get(target_mod)
+                if modifier and not _is_legacy_guided_modifier(obj, modifier) and (
+                    get_modifier_owner(obj, modifier) == self.profile_id
+                    or (get_modifier_owner(obj, modifier) is None and obj.get("_lod_geo_lod_created"))
+                ):
                     self._queue.append(obj)
         
         if not self._queue:
@@ -543,14 +594,17 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
         elif self.method == 'GNODES':
             mod = obj.modifiers.get(GEO_NODES_MOD_NAME)
             if mod:
-                factor_id = get_input_identifier(mod.node_group, GN_INPUT_FACTOR)
-                distance_id = get_input_identifier(mod.node_group, GN_INPUT_MAX_DIST)
-                if not factor_id or not distance_id:
+                if not self.gn_id_factor or not self.gn_id_dist:
                     raise RuntimeError("Missing geometry LOD inputs. Run Setup Modifiers first.")
 
-                factor_changed = _set_geometry_node_input(mod, factor_id, target_factor, EPSILON)
-                distance_changed = _set_geometry_node_input(mod, distance_id, self.max_dist, 0.0001)
-                if factor_changed or distance_changed:
+                changed = False
+                factor = get_geometry_node_input(mod, self.gn_id_factor, 1.0)
+                if abs(factor - target_factor) > EPSILON:
+                    changed = set_geometry_node_input(mod, self.gn_id_factor, target_factor) or changed
+                distance = get_geometry_node_input(mod, self.gn_id_dist, self.max_dist)
+                if abs(distance - self.max_dist) > 0.0001:
+                    changed = set_geometry_node_input(mod, self.gn_id_dist, self.max_dist) or changed
+                if changed:
                     obj.update_tag()
                     self._updated_count += 1
                 else:
@@ -575,6 +629,13 @@ class LOD_OT_GeoLODUpdateAsync(bpy.types.Operator):
             self.report({'INFO'}, message[:1024])
         return {'FINISHED'}
 
+    def cancel(self, context):
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
+        self._queue.clear()
+        self.report({'WARNING'}, "Geometry update cancelled; processed objects were kept.")
+
 class LOD_OT_GeoLODReset(bpy.types.Operator):
     bl_idname = "lod.geo_lod_reset"
     bl_label = "Reset Geometry"
@@ -582,14 +643,26 @@ class LOD_OT_GeoLODReset(bpy.types.Operator):
 
 
     def execute(self, context):
+        profile = ensure_active_profile(context.scene)
         removed = 0
-        for obj in context.scene.objects:
-            if obj.modifiers.get(DECIMATE_MOD_NAME): 
-                obj.modifiers.remove(obj.modifiers.get(DECIMATE_MOD_NAME)); removed+=1
-            if obj.modifiers.get(GEO_NODES_MOD_NAME): 
-                obj.modifiers.remove(obj.modifiers.get(GEO_NODES_MOD_NAME)); removed+=1
-            _remove_legacy_feature_group(obj)
-            if "_lod_geo_lod_created" in obj: del obj["_lod_geo_lod_created"]
+        for obj in get_profile_objects(context.scene, profile):
+            for modifier_name in (DECIMATE_MOD_NAME, GEO_NODES_MOD_NAME):
+                modifier = obj.modifiers.get(modifier_name)
+                if not modifier:
+                    continue
+                owner = get_modifier_owner(obj, modifier)
+                legacy_owned = bool(obj.get("_lod_geo_lod_created"))
+                if owner != profile.profile_id and not (owner is None and legacy_owned):
+                    continue
+                obj.modifiers.remove(modifier)
+                clear_modifier_owner(obj, modifier.name)
+                removed += 1
+                if modifier_name == DECIMATE_MOD_NAME:
+                    _remove_legacy_feature_group(obj)
+            if obj.get("_lod_geo_lod_created") and not any(
+                obj.modifiers.get(name) for name in (DECIMATE_MOD_NAME, GEO_NODES_MOD_NAME)
+            ):
+                del obj["_lod_geo_lod_created"]
         self.report({'INFO'}, f"Reset {removed} objects.")
         return {'FINISHED'}
 
@@ -616,6 +689,9 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
     _target_mod_name = ""
 
     def modal(self, context, event):
+        if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
         if event.type == 'TIMER':
             # 如果队列为空，完成
             if not self._queue:
@@ -646,6 +722,8 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene.lod_props
+        profile = ensure_active_profile(context.scene)
+        self.profile_id = profile.profile_id
         
         # 1. 确定要应用哪个修改器名字
         self._target_mod_name = DECIMATE_MOD_NAME if scn.geo_lod_method == 'DECIMATE' else GEO_NODES_MOD_NAME
@@ -662,11 +740,14 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
         self._queue = []
         
         # 遍历场景所有物体，寻找含有目标修改器的 Mesh
-        for obj in context.scene.objects:
+        for obj in get_profile_objects(context.scene, profile):
             if obj.type != 'MESH': continue
             if obj.hide_viewport: continue # 跳过隐藏物体，因为 apply 需要物体可见
             mod = obj.modifiers.get(self._target_mod_name)
-            if mod and not _is_legacy_guided_modifier(obj, mod):
+            if mod and not _is_legacy_guided_modifier(obj, mod) and (
+                get_modifier_owner(obj, mod) == self.profile_id
+                or (get_modifier_owner(obj, mod) is None and obj.get("_lod_geo_lod_created"))
+            ):
                 self._queue.append(obj)
 
         if not self._queue:
@@ -689,6 +770,13 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
 
     def process_object(self, context, obj):
         """处理单个物体：激活 -> 应用 -> 清理标记"""
+
+        if obj.type == 'MESH' and obj.data and obj.data.get(GENERATED_PROFILE_KEY) != self.profile_id:
+            mesh_copy = obj.data.copy()
+            assign_new_uuid(mesh_copy)
+            mesh_copy.name = f"LODify_{self.profile_id[:8]}_{obj.name}_Mesh"
+            mesh_copy[GENERATED_PROFILE_KEY] = self.profile_id
+            obj.data = mesh_copy
         
         # Blender API 限制：bpy.ops.object.modifier_apply 必须针对 "Active Object" 操作
         # 所以我们需要在后台悄悄切换激活物体
@@ -708,6 +796,7 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
             raise RuntimeError(f"Blender did not apply modifier {mod.name}.")
 
         self._reduced_faces += max(0, before_faces - len(obj.data.polygons))
+        clear_modifier_owner(obj, mod.name)
         if "_lod_geo_lod_created" in obj:
             del obj["_lod_geo_lod_created"]
         _remove_legacy_feature_group(obj)
@@ -738,6 +827,13 @@ class LOD_OT_GeoLODApplyAsync(bpy.types.Operator):
         else:
             self.report({'INFO'}, message[:1024])
         return {'FINISHED'}
+
+    def cancel(self, context):
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+        context.window_manager.progress_end()
+        self._queue.clear()
+        self.report({'WARNING'}, "Geometry apply cancelled; processed mesh copies were kept.")
 
 classes = (
     LOD_OT_GeoLODSetup,

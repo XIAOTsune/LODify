@@ -1,5 +1,6 @@
 import bpy
 from mathutils import Vector
+from ..core.profile import ensure_active_profile, get_profile_camera, get_profile_objects
 
 
 DISPLAY_RANKS = {
@@ -37,7 +38,8 @@ class LOD_OT_ViewportLODUpdate(bpy.types.Operator):
             self.report({'WARNING'}, "Viewport LOD is disabled in settings.")
             return {'CANCELLED'}
 
-        cam = scn.lod_camera or context.scene.camera
+        profile = ensure_active_profile(context.scene)
+        cam = get_profile_camera(context.scene, profile)
         if not cam:
             self.report({'ERROR'}, "No Camera found for LOD calculation.")
             return {'CANCELLED'}
@@ -46,7 +48,7 @@ class LOD_OT_ViewportLODUpdate(bpy.types.Operator):
         d0, d1, d2 = scn.lod_dist_0, scn.lod_dist_1, scn.lod_dist_2
         count = 0
 
-        for obj in context.scene.objects:
+        for obj in get_profile_objects(context.scene, profile):
             if obj.type not in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'}:
                 continue
 
@@ -97,9 +99,10 @@ class LOD_OT_ViewportLODReset(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
+        profile = ensure_active_profile(context.scene)
         restored_count = 0
 
-        for obj in context.scene.objects:
+        for obj in get_profile_objects(context.scene, profile):
             if obj.type not in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'}:
                 continue
 

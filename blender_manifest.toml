@@ -4,7 +4,7 @@ schema_version = "1.0.0"
 id = "lodify_optimizer"
 version = "3.0.0"
 name = "LODify"
-tagline = "Full-Scenario Perf Opt: Textures, Decimation & Viewport Mgmt"
+tagline = "Non-destructive render optimization with profiles, textures and LOD"
 maintainer = "XIAOTsune"
 type = "add-on"
 website = "https://github.com/XIAOTsune/LODify"
@@ -31,6 +31,7 @@ paths = [
     "__init__.py",
     "blender_manifest.toml",
     "README.md",
+    "RELEASE.md",
     "core",
     "i18n.py",
     "operators",

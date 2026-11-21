@@ -3,6 +3,7 @@ import json
 import bpy
 
 from .. import utils
+from ..core.profile import ensure_active_profile
 
 
 def _get_view3d_shading(context):
@@ -21,6 +22,7 @@ class LOD_OT_CollectionAnalyzer(bpy.types.Operator):
     def execute(self, context):
         scn = context.scene.lod_props
         bpy.ops.lod.cleancolors()
+        ensure_active_profile(context.scene)
 
         self.report({'INFO'}, "Analyzing Collections...")
 
@@ -109,9 +111,11 @@ class LOD_OT_ViewAnalyzer(bpy.types.Operator):
 
     def execute(self, context):
         scn = context.scene.lod_props
+        ensure_active_profile(context.scene)
         shading = _get_view3d_shading(context)
         if shading and hasattr(shading, "color_type"):
             scn.last_shading = shading.color_type
+            scn.last_shading_type = getattr(shading, "type", "SOLID")
             shading.type = 'SOLID'
             shading.color_type = 'OBJECT'
 
@@ -146,6 +150,8 @@ class LOD_OT_CleanViewAnalyzer(bpy.types.Operator):
         if shading and hasattr(shading, "color_type"):
             target = scn.last_shading if scn.last_shading else 'MATERIAL'
             try:
+                if scn.last_shading_type:
+                    shading.type = scn.last_shading_type
                 shading.color_type = target
             except Exception:
                 pass

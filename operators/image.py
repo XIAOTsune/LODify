@@ -6,6 +6,14 @@ import gc
 import subprocess # 替代 threading
 import sys        # 用于获取 python 解释器路径
 from .. import utils
+from ..core.profile import (
+    GENERATED_PROFILE_KEY,
+    assign_new_uuid,
+    ensure_active_profile,
+    get_active_profile,
+    get_profile_camera,
+    get_profile_objects,
+)
 
 
 _active_worker_outputs = {}
@@ -87,6 +95,24 @@ def _get_aspect_preserving_size(width, height, target_size):
     new_width = max(1, int(round(width * scale)))
     new_height = max(1, int(round(height * scale)))
     return new_width, new_height
+
+
+def _get_original_image_path(image):
+    """Return the source path even while a generated variant is active."""
+    raw_path = image.get("lod_original_path") or image.filepath
+    return bpy.path.abspath(raw_path) if raw_path else ""
+
+
+def _load_original_image_data(image):
+    """Ensure sizing uses the source image, not a previously generated variant."""
+    original = image.get("lod_original_path")
+    if not original:
+        return
+    original_abs = bpy.path.abspath(original)
+    current_abs = bpy.path.abspath(image.filepath) if image.filepath else ""
+    if original_abs and os.path.exists(original_abs) and os.path.normcase(original_abs) != os.path.normcase(current_abs):
+        image.filepath = original
+        image.reload()
     
 class LOD_OT_UpdateImageList(bpy.types.Operator):
     bl_idname = "lod.updateimagelist"
@@ -95,6 +121,7 @@ class LOD_OT_UpdateImageList(bpy.types.Operator):
 
     def execute(self, context):
         scn = context.scene.lod_props
+        ensure_active_profile(context.scene)
         scn.image_list.clear()
         
         total_size_mb = 0.0
@@ -195,6 +222,9 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
     TIME_BUDGET = 0.02      # 主线程每帧处理 Native 任务的时间
 
     def modal(self, context, event):
+        if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
         if event.type == 'TIMER':
             
             # --- A. 检查正在运行的子进程 ---
@@ -263,6 +293,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene.lod_props
+        ensure_active_profile(context.scene)
         
         base_path = bpy.path.abspath("//")
         if not base_path:
@@ -305,6 +336,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
             img = bpy.data.images.get(item.lod_image_name)
             if not img: continue
             if img.source in {'VIEWER', 'GENERATED'}: continue
+            _load_original_image_data(img)
             
             # --- 智能分流策略 ---
             method = "NATIVE"
@@ -323,7 +355,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
             # 只有当安装了 PIL 且文件在本地时，才使用子进程
             elif check_pil_available():
                 if not img.packed_file and img.filepath:
-                     abs_path = bpy.path.abspath(img.filepath)
+                     abs_path = _get_original_image_path(img)
                      if os.path.exists(abs_path):
                          method = "PIL"
             
@@ -332,7 +364,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
                 img["lod_original_path"] = img.filepath
 
             # 构造文件名
-            original_filepath = img.filepath_from_user()
+            original_filepath = img.get("lod_original_path") or img.filepath_from_user()
             file_name = os.path.basename(original_filepath)
             if not file_name: file_name = f"{img.name}.png"
             name_part, ext_part = os.path.splitext(file_name)
@@ -349,7 +381,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
             task_data = {
                 "img_name": item.lod_image_name,
                 "target_size": self.target_size,
-                "src_path": bpy.path.abspath(img.filepath), 
+                "src_path": _get_original_image_path(img),
                 "dst_path": new_full_path,                 
                 "method": method,
                 "action": action
@@ -437,6 +469,16 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
         
         self.report({'INFO'}, f"Resize Complete! {self._processed} images processed.")
         return {'FINISHED'}
+
+    def cancel(self, context):
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+        for proc, _task in self._active_processes:
+            if proc.poll() is None:
+                proc.terminate()
+        self._active_processes.clear()
+        context.window_manager.progress_end()
+        self.report({'WARNING'}, "Image resize cancelled; generated files were kept.")
     
 class LOD_OT_ClearDuplicateImage(bpy.types.Operator):
     bl_idname = "lod.clearduplicateimage"
@@ -444,6 +486,7 @@ class LOD_OT_ClearDuplicateImage(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
+        ensure_active_profile(context.scene)
         cleaned_count = 0
         remap_dict = {} 
         
@@ -468,20 +511,34 @@ class LOD_OT_ClearDuplicateImage(bpy.types.Operator):
             self.report({'INFO'}, "No duplicate images found.")
             return {'FINISHED'}
 
-        for mat in bpy.data.materials:
-            if not mat.use_nodes or not mat.node_tree: continue
-            for node in mat.node_tree.nodes:
-                if node.type == 'TEX_IMAGE' and node.image:
-                    if node.image.name in remap_dict:
-                        target_img = remap_dict[node.image.name]
-                        node.image = target_img
+        profile = ensure_active_profile(context.scene)
+        for obj in get_profile_objects(context.scene, profile):
+            if obj.type != 'MESH':
+                continue
+            for slot_index, slot in enumerate(obj.material_slots):
+                material = slot.material
+                if not material or not material.use_nodes or not material.node_tree:
+                    continue
+                duplicate_nodes = [
+                    node for node in material.node_tree.nodes
+                    if node.type == 'TEX_IMAGE' and node.image and node.image.name in remap_dict
+                ]
+                if not duplicate_nodes:
+                    continue
+                if material.get(GENERATED_PROFILE_KEY) != profile.profile_id:
+                    variant = material.copy()
+                    assign_new_uuid(variant)
+                    variant.name = f"LODify_{profile.profile_id[:8]}_{obj.name}_{slot_index}"
+                    variant[GENERATED_PROFILE_KEY] = profile.profile_id
+                    slot.material = variant
+                    material = variant
+                for node in material.node_tree.nodes:
+                    if node.type == 'TEX_IMAGE' and node.image and node.image.name in remap_dict:
+                        node.image = remap_dict[node.image.name]
                         cleaned_count += 1
         
-        # Purge logic
-        for img in list(bpy.data.images):
-            if img.users == 0:
-                if len(img.name) > 4 and img.name[-3:].isdigit():
-                    bpy.data.images.remove(img)
+        # Keep both source images and duplicate datablocks. A profile restore
+        # must never depend on Blender's global orphan purge.
         
         bpy.ops.lod.updateimagelist()
         self.report({'INFO'}, f"Replaced {cleaned_count} duplicate image references.")
@@ -494,11 +551,20 @@ class LOD_OT_DeleteTextureFolder(bpy.types.Operator):
     folder_name: bpy.props.StringProperty() 
 
     def execute(self, context):
+        ensure_active_profile(context.scene)
         base_path = bpy.path.abspath("//")
         if not base_path: return {'CANCELLED'}
         
         target_path_abs = os.path.join(base_path, self.folder_name)
         target_path_abs = os.path.normpath(target_path_abs) # 标准化路径
+
+        if (
+            not self.folder_name.startswith("textures_")
+            or not _is_path_in_directory(target_path_abs, base_path)
+            or os.path.normcase(target_path_abs) == os.path.normcase(os.path.normpath(base_path))
+        ):
+            self.report({'ERROR'}, "Only generated texture folders inside the Blend directory can be deleted.")
+            return {'CANCELLED'}
         
         if os.path.exists(target_path_abs):
             # 检查是否有图片正在使用这个文件夹里的文件，如果有，强制切回原图
@@ -562,6 +628,7 @@ class LOD_OT_SwitchResolution(bpy.types.Operator):
 
     def execute(self, context):
         scn = context.scene.lod_props
+        ensure_active_profile(context.scene)
         target = self.target_res
         base_path = bpy.path.abspath("//")
         if not base_path:
@@ -664,6 +731,9 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
     TIME_BUDGET = 0.02    
 
     def modal(self, context, event):
+        if event.type in {'ESC'}:
+            self.cancel(context)
+            return {'CANCELLED'}
         if event.type == 'TIMER':
             if self._phase == 'ANALYZING':
                 self.do_analysis(context)
@@ -743,7 +813,8 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
 
     def invoke(self, context, event):
         scn = context.scene.lod_props
-        cam = scn.lod_camera or context.scene.camera
+        profile = ensure_active_profile(context.scene)
+        cam = get_profile_camera(context.scene, profile)
         
         if not cam:
             self.report({'ERROR'}, "No active camera found!")
@@ -801,7 +872,8 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
     def do_analysis(self, context):
         """分析场景 (逻辑保持不变)"""
         scn = context.scene.lod_props
-        cam = scn.lod_camera or context.scene.camera
+        profile = ensure_active_profile(context.scene)
+        cam = get_profile_camera(context.scene, profile)
 
         if scn.resize_size == 'c':
             user_max_cap = scn.custom_resize_size
@@ -812,7 +884,7 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         ABSOLUTE_MIN_FLOOR = 32
         image_res_map = {}
         instance_sources = utils.get_instance_sources(context.scene)
-        mesh_objs = [o for o in context.scene.objects if o.type == 'MESH' and not o.hide_render]
+        mesh_objs = [o for o in get_profile_objects(context.scene, profile) if o.type == 'MESH' and not o.hide_render]
 
         for obj in mesh_objs:
             if obj in instance_sources:
@@ -845,6 +917,7 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
 
     def prepare_task_data(self, img, req_px):
         """准备任务数据"""
+        _load_original_image_data(img)
         final_size = 4
         if req_px <= 4: final_size = 4
         elif req_px <= 8: final_size = 8 
@@ -867,7 +940,7 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         if "lod_original_path" not in img:
             img["lod_original_path"] = img.filepath
 
-        original_filepath = img.filepath_from_user()
+        original_filepath = img.get("lod_original_path") or img.filepath_from_user()
         file_name = os.path.basename(original_filepath)
         if not file_name: file_name = f"{img.name}.png"
         name_part, ext_part = os.path.splitext(file_name)
@@ -888,14 +961,14 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
             action = "COPY"
         elif check_pil_available():
             if not img.packed_file and img.filepath:
-                 abs_path = bpy.path.abspath(img.filepath)
+                 abs_path = _get_original_image_path(img)
                  if os.path.exists(abs_path):
                      method = "PIL"
         
         task_data = {
             "img_name": img.name,
             "target_size": final_size,
-            "src_path": bpy.path.abspath(img.filepath), 
+            "src_path": _get_original_image_path(img),
             "dst_path": new_full_path,
             "method": method,
             "action": action 
@@ -939,10 +1012,6 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         context.window_manager.progress_end()
         bpy.ops.lod.updateimagelist()
 
-        try:
-            bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
-        except: pass
-        
         gc.collect()
         for area in context.screen.areas: area.tag_redraw()
             
@@ -950,8 +1019,14 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
 
 
     def cancel(self, context):
-        context.window_manager.event_timer_remove(self._timer)
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+        for proc, _task in self._active_processes:
+            if proc.poll() is None:
+                proc.terminate()
+        self._active_processes.clear()
         context.window_manager.progress_end()
+        self.report({'WARNING'}, "Camera optimization cancelled; generated files were kept.")
 
 
 class LOD_OT_CleanUnusedMaterialSlots(bpy.types.Operator):
@@ -961,11 +1036,22 @@ class LOD_OT_CleanUnusedMaterialSlots(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
+        profile = ensure_active_profile(context.scene)
         total_removed = 0
         objects_cleaned = 0
         
         # 遍历所有物体
         for obj in bpy.data.objects:
+            if obj.type == 'MESH' and obj.data and obj.data.get(GENERATED_PROFILE_KEY) != profile.profile_id:
+                # The profile snapshot stores the source mesh; edit a private copy.
+                try:
+                    mesh_copy = obj.data.copy()
+                    assign_new_uuid(mesh_copy)
+                    mesh_copy.name = f"LODify_Cleanup_{obj.name}"
+                    mesh_copy[GENERATED_PROFILE_KEY] = profile.profile_id
+                    obj.data = mesh_copy
+                except Exception:
+                    pass
             removed = self.clean_object_slots(obj)
             if removed > 0:
                 total_removed += removed
