@@ -7,6 +7,53 @@ import subprocess # 替代 threading
 import sys        # 用于获取 python 解释器路径
 from .. import utils
 
+
+_active_worker_outputs = {}
+
+
+def _image_worker_limit():
+    available = getattr(os, "process_cpu_count", os.cpu_count)() or os.cpu_count() or 1
+    return max(1, available - 2)
+
+
+def _worker_output_key(path):
+    return os.path.normcase(os.path.realpath(path))
+
+
+def _can_process_image_task(task, worker_limit):
+    for process in tuple(_active_worker_outputs):
+        if process.poll() is not None:
+            del _active_worker_outputs[process]
+
+    if _worker_output_key(task["dst_path"]) in _active_worker_outputs.values():
+        return False
+    return task["method"] != "PIL" or len(_active_worker_outputs) < worker_limit
+
+
+def _start_image_worker(worker_script, task):
+    python_args = [arg for arg in getattr(bpy.app, "python_args", ()) if arg != "-I"]
+    cmd = [sys.executable] + python_args + [worker_script,
+        "--src", task["src_path"],
+        "--dst", task["dst_path"],
+        "--size", str(task["target_size"]),
+        "--action", task["action"],
+    ]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(os.path.abspath(path) for path in sys.path)
+    output_key = _worker_output_key(task["dst_path"])
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    _active_worker_outputs[process] = output_key
+    return process
+
+
 # 延迟导入pil
 def check_pil_available():
     """
@@ -145,7 +192,6 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
     _worker_script = ""     # worker.py 的路径
     
     # 并发配置
-    MAX_PROCESSES = 4       # 同时运行的子进程数量
     TIME_BUDGET = 0.02      # 主线程每帧处理 Native 任务的时间
 
     def modal(self, context, event):
@@ -182,6 +228,7 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
                         ## 统计数不增加，只移除失败的进程
 
                     # 从活动列表中移除
+                    _active_worker_outputs.pop(proc, None)
                     self._active_processes.pop(i)
 
             # --- B. 调度新任务 ---
@@ -196,20 +243,13 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
                     break
                 
                 # 2. 预读任务
-                next_task = self._task_queue[0]
-                
-                if next_task["method"] == "PIL":
-                    # 检查进程池是否已满
-                    if len(self._active_processes) < self.MAX_PROCESSES:
-                        task = self._task_queue.pop(0)
-                        self.spawn_worker_process(task)
-                    else:
-                        # 进程池满了，等待下一帧
-                        break
-                        
-                elif next_task["method"] == "NATIVE":
+                if not _can_process_image_task(self._task_queue[0], self._worker_limit):
+                    break
+                task = self._task_queue.pop(0)
+                if task["method"] == "PIL":
+                    self.spawn_worker_process(task)
+                else:
                     # 原生任务必须在主线程执行
-                    task = self._task_queue.pop(0)
                     try:
                         self.process_native_image(task)
                     except Exception as e:
@@ -322,55 +362,22 @@ class LOD_OT_ResizeImagesAsync(bpy.types.Operator):
 
         self._total_tasks = len(self._task_queue)
         self._processed = 0
+        self._worker_limit = _image_worker_limit()
         
         context.window_manager.progress_begin(0, self._total_tasks)
         self._timer = context.window_manager.event_timer_add(0.01, window=context.window)
         context.window_manager.modal_handler_add(self)
         
         pil_count = sum(1 for t in self._task_queue if t["method"] == "PIL")
-        self.report({'INFO'}, f"Starting: {pil_count} via Worker (Fast), {self._total_tasks - pil_count} via Blender (Slow).")
+        self.report({'INFO'}, f"Starting: {pil_count} worker tasks, {self._total_tasks - pil_count} Blender tasks. Worker limit: {self._worker_limit}.")
         return {'RUNNING_MODAL'}
 
     def spawn_worker_process(self, task):
-
-        import sys
-        import os
-        
-        # 1. 复制当前的 sys.path
-        python_args = []
-        if hasattr(bpy.app, "python_args"):
-            # 同样过滤掉 "-I"
-            python_args = [arg for arg in bpy.app.python_args if arg != "-I"]
-        
-        """启动一个子进程来执行任务"""
-        # 构建命令： python worker.py --src ... --dst ...
-        cmd = [sys.executable] + python_args + [self._worker_script] + [
-            "--src", task["src_path"],
-            "--dst", task["dst_path"],
-            "--size", str(task["target_size"]),
-            "--action", task["action"]
-        ]
-        current_paths = [os.path.abspath(p) for p in sys.path]
-        # 构建环境变量，确保子进程能找到主进程已安装的 wheels
-        my_env = os.environ.copy()
-        my_env["PYTHONPATH"] = os.pathsep.join(current_paths)
         try:
-            # 启动子进程，接管 stdout 和 stderr
-            # text=True 确保返回字符串而不是字节
-            # creationflags=subprocess.CREATE_NO_WINDOW (可选，防止 Windows 弹窗，但在 Blender 内部通常不需要)
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8', # 强制编码
-                env=my_env
-            )
-            self._active_processes.append((proc, task))
-            
-        except Exception as e:
-            print(f"Failed to spawn worker: {e}")
-            # 如果启动失败，尝试降级到 Native 处理（或者标记失败）
+            process = _start_image_worker(self._worker_script, task)
+            self._active_processes.append((process, task))
+        except Exception as error:
+            print(f"Failed to spawn worker: {error}")
             task["method"] = "NATIVE"
             self._task_queue.insert(0, task)
 
@@ -654,7 +661,6 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
     _worker_script = ""
 
     # 配置
-    MAX_PROCESSES = 4     
     TIME_BUDGET = 0.02    
 
     def modal(self, context, event):
@@ -689,6 +695,7 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
                                 print(f"Native Fallback Error: {e}")    
                                
                         self._processed += 1
+                        _active_worker_outputs.pop(proc, None)
                         self._active_processes.pop(i)
                 
                 # B. 检查完成
@@ -701,19 +708,18 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
                     if (time.time() - start_time) > self.TIME_BUDGET:
                         break
                     
-                    # 检查进程池空间
-                    if len(self._active_processes) >= self.MAX_PROCESSES:
-                        break
-
                     # 取出任务 (img object, pixel_int)
                     img, req_px = self._queue[0]
                     task_data = self.prepare_task_data(img, req_px)
+                    if not _can_process_image_task(task_data, self._worker_limit):
+                        break
                     
                     # 移除队列头
                     self._queue.pop(0)
 
-                    if not task_data:
-                        # 缓存已存在，跳过
+                    if os.path.exists(task_data["dst_path"]):
+                        img.filepath = task_data["dst_path"]
+                        img.reload()
                         self._processed += 1 
                         continue
                         
@@ -760,55 +766,24 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
         self._phase = 'ANALYZING'
         self._queue = []
         self._processed = 0
+        self._worker_limit = _image_worker_limit()
         self._output_dir = os.path.join(base_path, "textures_camera_optimized")
         if not os.path.exists(self._output_dir):
             os.makedirs(self._output_dir, exist_ok=True)
             
-        self.report({'INFO'}, "Starting Camera Optimization...")
+        self.report({'INFO'}, f"Starting Camera Optimization. Worker limit: {self._worker_limit}.")
         return {'RUNNING_MODAL'}
 
     def spawn_worker_process(self, task):
-        # --- 显式查找 PIL 路径  ---
-        import sys
-        import os
-        
-        # 1. 准备 Python 参数
-        python_args = []
-        if hasattr(bpy.app, "python_args"):
-            # 只要不是 "-I" 的参数都保留。去掉 -I 后，子进程才会读取 PYTHONPATH
-            python_args = [arg for arg in bpy.app.python_args if arg != "-I"]
-
-        current_paths = [os.path.abspath(p) for p in sys.path]
-        
-        # 2. 构建命令
-        cmd = [sys.executable] + python_args + [self._worker_script] + [
-            "--src", task["src_path"],
-            "--dst", task["dst_path"],
-            "--size", str(task["target_size"]),
-            "--action", task["action"]
-        ]
-
-        # 构建环境变量
-        current_paths = [os.path.abspath(p) for p in sys.path]
-        my_env = os.environ.copy()
-        my_env["PYTHONPATH"] = os.pathsep.join(current_paths)
-
         try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                env=my_env
-            )
-            self._active_processes.append((proc, task))
-        except Exception as e:
-            print(f"Failed to spawn worker: {e}")
-            # 启动失败直接转 Native 执行
+            process = _start_image_worker(self._worker_script, task)
+            self._active_processes.append((process, task))
+        except Exception as error:
+            print(f"Failed to spawn worker: {error}")
             try:
                 self.process_native_fallback(task)
-            except: pass
+            except Exception as fallback_error:
+                print(f"Native Fallback Error: {fallback_error}")
             self._processed += 1
 
     def handle_worker_success(self, res):
@@ -900,12 +875,6 @@ class LOD_OT_OptimizeByCamera(bpy.types.Operator):
 
         new_file_name = f"{name_part}_{final_size}px{ext_part}"
         new_full_path = os.path.join(self._output_dir, new_file_name)
-
-        # 缓存检查
-        if os.path.exists(new_full_path):
-            img.filepath = new_full_path
-            img.reload()
-            return None 
 
         method = "NATIVE"
         action = "RESIZE"

@@ -112,12 +112,6 @@ def get_stepped_lod_factor(raw_ratio, min_protection=0.01):
     return max(target_factor, min_protection)
 
 
-def get_feature_guided_lod_factor(raw_ratio, min_ratio=0.01):
-    """Scale retained faces with projected area, bounded by the user safety floor."""
-    ratio = min(1.0, max(0.0, float(raw_ratio)))
-    floor = min(1.0, max(0.01, float(min_ratio)))
-    return max(floor, ratio * ratio)
-
 def get_collection_vertex_count(collection):
     """递归计算集合内所有 Mesh 对象的顶点总数"""
     total_verts = 0

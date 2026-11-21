@@ -37,6 +37,17 @@ DEFAULT_NEAR_DISPLAY = 'TEXTURED' if any(item[0] == 'TEXTURED' for item in DISPL
 DEFAULT_MID_DISPLAY = 'SOLID' if any(item[0] == 'SOLID' for item in DISPLAY_TYPE_ITEMS) else DISPLAY_TYPE_ITEMS[0][0]
 DEFAULT_LOW_DISPLAY = 'WIRE' if any(item[0] == 'WIRE' for item in DISPLAY_TYPE_ITEMS) else DISPLAY_TYPE_ITEMS[-1][0]
 DEFAULT_FAR_DISPLAY = 'BOUNDS' if any(item[0] == 'BOUNDS' for item in DISPLAY_TYPE_ITEMS) else DISPLAY_TYPE_ITEMS[-1][0]
+
+
+def _get_geo_lod_method(props):
+    # Saved scenes used 2 for guided Decimate and 3 for analysis.
+    return 0 if props.get("geo_lod_method", 1) in (0, 2) else 1
+
+
+def _set_geo_lod_method(props, value):
+    props["geo_lod_method"] = value
+
+
 # --- Collection Items ---
 class LOD_ImageItem(bpy.types.PropertyGroup):
     lod_image_name: StringProperty()
@@ -138,41 +149,14 @@ class LOD_Props(bpy.types.PropertyGroup):
     geo_lod_method: EnumProperty(
             name="LOD Method",
             items=[
-                ("DECIMATE", "Decimate Modifier", "Use standard Decimate modifier"),
-                ("GNODES", "Geometry Nodes", "Use Geometry Nodes (High Quality)"),
-                ("FEATURE_GUIDED", "Feature Guided Decimate", "Use feature-weighted protection with Decimate"),
-                ("FEATURE_ANALYSIS", "Feature Analysis", "Analyze shape features without changing the mesh"),
+                ("DECIMATE", "Decimate Modifier", "Use standard Decimate modifier", 0),
+                ("GNODES", "Geometry Nodes", "Use Geometry Nodes (High Quality)", 1),
             ],
             default="GNODES",
+            get=_get_geo_lod_method,
+            set=_set_geo_lod_method,
         )
 
-    feature_angle_threshold: FloatProperty(
-        name="Feature Angle",
-        description="Dihedral angle threshold for candidate feature edges",
-        default=45.0,
-        min=1.0,
-        max=179.0,
-    )
-    feature_min_path_edges: IntProperty(
-        name="Minimum Path Length",
-        description="Hide feature chains shorter than this number of edges",
-        default=3,
-        min=1,
-        max=100,
-    )
-    feature_protect_strength: FloatProperty(
-        name="Protection Strength",
-        description="Soft influence of detected feature vertices on Decimate collapse",
-        default=1.0,
-        min=0.0,
-        max=10.0,
-    )
-    feature_protect_sharp: BoolProperty(name="Protect Sharp Edges", default=True)
-    feature_protect_crease: BoolProperty(name="Protect Creases", default=True)
-    feature_protect_uv: BoolProperty(name="Protect UV Borders", default=True)
-    feature_protect_seam: BoolProperty(name="Protect Seams", default=False)
-    feature_protect_material: BoolProperty(name="Protect Material Borders", default=True)
-    
     geo_lod_min_faces: IntProperty(
         name="Min Faces", 
         default=1000, 

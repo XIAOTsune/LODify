@@ -85,7 +85,6 @@ modules = [
     operators.image, 
     operators.viewport,
     operators.geometry,
-    operators.retopology,
     operators.shader_lod,
 ]
 
