@@ -48,6 +48,24 @@ def _set_geo_lod_method(props, value):
     props["geo_lod_method"] = value
 
 
+def get_animation_settings_snapshot(scene):
+    props = scene.lod_props
+    camera = props.animation_camera
+    return {
+        "frame_start": scene.frame_start,
+        "frame_end": scene.frame_end,
+        "sample_step": props.animation_sample_step,
+        "camera": camera.name if camera else "",
+        "geo_method": props.geo_lod_method,
+        "geo_min_faces": props.geo_lod_min_faces,
+        "geo_min_ratio": props.geo_lod_min_ratio,
+        "geo_max_dist": props.geo_lod_max_dist,
+        "texture_scale": props.animation_texture_scale,
+        "texture_size": props.resize_size,
+        "texture_custom_size": props.custom_resize_size,
+    }
+
+
 # --- Collection Items ---
 class LOD_ImageItem(bpy.types.PropertyGroup):
     lod_image_name: StringProperty()
@@ -118,6 +136,30 @@ class LOD_Props(bpy.types.PropertyGroup):
         description="Camera used for screen coverage calculation",
         type=bpy.types.Object,
     )
+
+    animation_camera: PointerProperty(
+        name="Animation Camera",
+        description="Use this camera for every animation sample, or leave empty to follow timeline camera markers",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.type == 'CAMERA',
+    )
+    animation_sample_step: IntProperty(
+        name="Sample Step",
+        description="Analyze every Nth frame, with endpoints and camera cuts always included",
+        default=5,
+        min=1,
+    )
+    animation_show_settings: BoolProperty(default=False, options={'HIDDEN'})
+    animation_show_quality: BoolProperty(default=False, options={'HIDDEN'})
+    animation_show_details: BoolProperty(default=False, options={'HIDDEN'})
+    animation_texture_scale: FloatProperty(
+        name="Texture Resolution Multiplier",
+        description="Scale the screen-space texture resolution estimate before applying the size limit",
+        default=1.2,
+        min=0.25,
+        max=2.0,
+    )
+    animation_report: StringProperty(options={'HIDDEN'})
     
     lod_dist_0: FloatProperty(name="LOD 0 Distance", default=10.0, min=0.0, description="High Detail End Distance")
     lod_dist_1: FloatProperty(name="LOD 1 Distance", default=25.0, min=0.0, description="Mid Detail End Distance")

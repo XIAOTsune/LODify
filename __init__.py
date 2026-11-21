@@ -86,6 +86,7 @@ modules = [
     operators.viewport,
     operators.geometry,
     operators.shader_lod,
+    operators.animation,
 ]
 
 def register():

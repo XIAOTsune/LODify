@@ -1,6 +1,8 @@
 import bpy
 import os
 from .. import AUTHOR_NAME
+from .. import utils
+from ..properties import get_animation_settings_snapshot
 from ..i18n import i18n
 
 class LOD_PT_MainPanel:
@@ -302,10 +304,103 @@ class LOD_PT_LODManager(LOD_PT_MainPanel, bpy.types.Panel):
             op_text = i18n("Apply Decimate (Destructive)") if scn.geo_lod_method == 'DECIMATE' else i18n("Apply GeoNodes (Destructive)")
             row.operator("lod.geo_lod_apply_async", text=op_text, icon="CHECKMARK")
 
-class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
-    bl_label = "5. Clean Up & Storage"
-    bl_idname = "LOD_PT_DuplicateRemover"
+
+class LOD_PT_AnimationOptimization(LOD_PT_MainPanel, bpy.types.Panel):
+    bl_label = "5. Animation Optimization"
+    bl_idname = "LOD_PT_AnimationOptimization"
     bl_order = 5
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.lod_props
+        layout.label(text=i18n("Save the project, analyze the animation, then generate a copy."), icon='INFO')
+        settings = layout.row()
+        settings.prop(
+            props,
+            "animation_show_settings",
+            text=i18n("Sampling and camera"),
+            icon='TRIA_DOWN' if props.animation_show_settings else 'TRIA_RIGHT',
+            emboss=False,
+            toggle=True,
+        )
+        if props.animation_show_settings:
+            settings_box = layout.box()
+            settings_box.prop(props, "animation_sample_step", text=i18n("Sample every N frames"))
+            settings_box.label(text=i18n("Set to 1 for every frame. Endpoints and camera cuts are always sampled."))
+            settings_box.prop(props, "animation_camera", text=i18n("Camera override"))
+            settings_box.label(text=i18n("Leave empty to follow timeline camera cuts."))
+
+        quality = layout.row()
+        quality.prop(
+            props,
+            "animation_show_quality",
+            text=i18n("Geometry and texture quality"),
+            icon='TRIA_DOWN' if props.animation_show_quality else 'TRIA_RIGHT',
+            emboss=False,
+            toggle=True,
+        )
+        if props.animation_show_quality:
+            quality_box = layout.box()
+            quality_box.prop(props, "geo_lod_method", text=i18n("Geometry method"))
+            quality_box.prop(props, "geo_lod_min_ratio", text=i18n("Minimum geometry retained"), slider=True)
+            quality_box.prop(props, "geo_lod_min_faces", text=i18n("Skip below face count"))
+            if props.geo_lod_method == 'GNODES':
+                quality_box.prop(props, "geo_lod_max_dist", text=i18n("Geometry node merge distance"))
+            quality_box.separator()
+            quality_box.prop(props, "animation_texture_scale", text=i18n("Texture resolution multiplier"))
+            quality_box.prop(props, "resize_size", text=i18n("Maximum texture size"))
+            if props.resize_size == 'c':
+                quality_box.prop(props, "custom_resize_size", text=i18n("Maximum pixels"))
+            quality_box.label(text=i18n("Reanalyze after changing these options."))
+
+        layout.operator("lod.animation_analyze", text=i18n("Analyze Animation"), icon='VIEW_CAMERA')
+        if props.animation_report:
+            try:
+                import json
+                report = json.loads(props.animation_report)
+                summary = layout.box()
+                summary.label(text=f"{i18n('Analysis complete')} · {len(report['frames'])} {i18n('frames')}", icon='CHECKMARK')
+                result_counts = f"{len(report['objects'])} {i18n('objects')} · {len(report['images'])} {i18n('textures')}"
+                if report["skipped"]:
+                    result_counts += f" · {len(report['skipped'])} {i18n('kept unchanged')}"
+                summary.label(text=result_counts)
+                settings_match = report.get("settings") == get_animation_settings_snapshot(context.scene)
+                if settings_match:
+                    summary.operator("lod.animation_generate", text=i18n("Generate Optimized Copy"), icon='EXPORT')
+                    summary.label(text=i18n("The copy and texture folder are saved beside the source project."), icon='FILE_FOLDER')
+                else:
+                    summary.label(text=i18n("Options changed. Analyze again to refresh the recommendations."), icon='INFO')
+
+                details = layout.row()
+                details.prop(
+                    props,
+                    "animation_show_details",
+                    text=i18n("Review recommendations and skipped items"),
+                    icon='TRIA_DOWN' if props.animation_show_details else 'TRIA_RIGHT',
+                    emboss=False,
+                    toggle=True,
+                )
+                if props.animation_show_details:
+                    box = layout.box()
+                    box.label(text=i18n("Geometry recommendations (retained detail)"), icon='MESH_DATA')
+                    for item in report["objects"]:
+                        factor = utils.get_stepped_lod_factor(item["peak"], props.geo_lod_min_ratio)
+                        box.label(text=f"{item['name']} · {i18n('peak frame')} {item['frame']} · {i18n('keep')} {factor:.0%}")
+                    box.label(text=i18n("Texture recommendations (long edge)"), icon='IMAGE_DATA')
+                    for item in report["images"]:
+                        box.label(text=f"{item['name']}: {item['width']}×{item['height']} → {int(item['demand'])} px · {i18n('peak frame')} {item['frame']}")
+                    if report["skipped"]:
+                        box.label(text=i18n("Kept unchanged (reason)"), icon='INFO')
+                        for name, reason in report["skipped"].items():
+                            box.label(text=f"{name}: {reason}")
+            except (KeyError, TypeError, ValueError):
+                layout.label(text="Analysis report is invalid. Analyze again.", icon='ERROR')
+
+class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
+    bl_label = "6. Clean Up & Storage"
+    bl_idname = "LOD_PT_DuplicateRemover"
+    bl_order = 6
     
     # 【修复操作】删除或注释掉这个函数
     # def draw_header(self, context):
@@ -358,9 +453,9 @@ class LOD_PT_DuplicateRemover(LOD_PT_MainPanel, bpy.types.Panel):
                     op.folder_name = folder
 
 class LOD_PT_Experimental(LOD_PT_MainPanel, bpy.types.Panel):
-    bl_label = "6. Experimental Features"
+    bl_label = "7. Experimental Features"
     bl_idname = "LOD_PT_Experimental"
-    bl_order = 6
+    bl_order = 7
     bl_options = {'DEFAULT_CLOSED'}
 
     # 【修复操作】删除或注释掉这个函数
@@ -409,6 +504,7 @@ classes = (
     LOD_PT_ViewAnalyzer,
     LOD_PT_ImageResizer,
     LOD_PT_LODManager,
+    LOD_PT_AnimationOptimization,
     LOD_PT_DuplicateRemover,
     LOD_PT_Experimental,
 )
